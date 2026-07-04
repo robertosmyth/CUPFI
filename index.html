@@ -277,9 +277,15 @@
       </div>
       <div class="admin-section-title mt-1"><i class="ti ti-users"></i> Usuarios registrados <span class="admin-badge">Admin</span></div>
       <div class="note-box">Por seguridad, borrar cuentas de usuario no está disponible desde el navegador (requeriría exponer una clave con privilegios totales). Si necesitás dar de baja a alguien, hacelo desde el panel de Supabase (Authentication → Users).</div>
+      <div class="section-header">
+        <div class="search-row flex-grow mb-0">
+          <input type="text" id="admin-search-users" placeholder="Buscar usuario por nombre, email o teléfono..." oninput="renderAdmin()">
+        </div>
+        <span class="count-pill" id="admin-users-count">0</span>
+      </div>
       <div class="table-wrap">
         <table class="admin-table">
-          <thead><tr><th>Nombre</th><th>Email</th><th>Teléfono</th><th>Empresas</th><th>Rol</th></tr></thead>
+          <thead><tr><th>Nombre</th><th>Email</th><th>Teléfono</th><th>Empresas</th><th>Rol</th><th>Acciones</th></tr></thead>
           <tbody id="admin-users-body"></tbody>
         </table>
       </div>
@@ -312,13 +318,4 @@
     </div>
     <div class="form-group"><label class="form-label">País</label><input class="form-input" id="ub-pais" type="text"></div>
     <div class="action-row">
-      <button class="btn-prim" onclick="guardarUbicacion()"><i class="ti ti-map-pin"></i> Guardar</button>
-      <button class="btn-out" onclick="closeModal('modal-ubicacion')">Cancelar</button>
-    </div>
-    <div class="form-msg" id="ub-msg"></div>
-  </div>
-</div>
-
-<script type="module" src="assets/js/main.js"></script>
-</body>
-</html>
+      <

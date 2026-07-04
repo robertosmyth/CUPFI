@@ -56,9 +56,13 @@ create policy "Profiles visibles para todos los autenticados"
   to authenticated using (true);
 
 drop policy if exists "Cada usuario edita su propio perfil" on public.profiles;
-create policy "Cada usuario edita su propio perfil"
+drop policy if exists "Cada usuario edita su propio perfil o admin edita cualquiera" on public.profiles;
+create policy "Cada usuario edita su propio perfil o admin edita cualquiera"
   on public.profiles for update
-  to authenticated using (auth.uid() = id);
+  to authenticated using (
+    auth.uid() = id or
+    exists (select 1 from public.profiles where id = auth.uid() and role = 'admin')
+  );
 
 drop policy if exists "Insert propio perfil" on public.profiles;
 create policy "Insert propio perfil"
@@ -144,12 +148,16 @@ create policy "Usuarios autenticados borran sus logos"
   using (bucket_id = 'logos' and owner = auth.uid());
 
 -- SEGURIDAD: nadie puede auto-promoverse a admin ni "transferir" una
--- empresa cambiando su dueño desde el cliente (ver sql/003_lockdown_role_and_uid.sql)
+-- empresa cambiando su dueño desde el cliente. Un admin sí puede cambiar
+-- el rol de otros usuarios (panel Admin de la app) porque la condición
+-- de abajo lo permite explícitamente.
 create or replace function public.prevent_role_change()
 returns trigger as $$
 begin
   if NEW.role is distinct from OLD.role then
-    NEW.role := OLD.role;
+    if not exists (select 1 from public.profiles where id = auth.uid() and role = 'admin') then
+      NEW.role := OLD.role;
+    end if;
   end if;
   return NEW;
 end;
@@ -166,12 +174,4 @@ begin
   NEW.uid := OLD.uid;
   return NEW;
 end;
-$$ language plpgsql security definer set search_path = public;
-
-drop trigger if exists prevent_empresa_uid_change_trigger on public.empresas;
-create trigger prevent_empresa_uid_change_trigger
-  before update on public.empresas
-  for each row execute procedure public.prevent_empresa_uid_change();
-
--- ADMIN por defecto: se asigna manualmente desde el dashboard con:
--- update public.profiles set role = 'admin' where email = 'tu-email@fi.unlz.edu.ar';
+$$ language plpg

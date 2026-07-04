@@ -837,23 +837,19 @@ window.renderAdmin = function () {
       </div></td>
     </tr>`).join('');
 
-  document.getElementById('admin-users-body').innerHTML = profiles.map(u => `
+  const uq = (document.getElementById('admin-search-users').value || '').toLowerCase();
+  const filteredUsers = profiles.filter(u => {
+    if (!uq) return true;
+    return [u.nombre, u.apellido, u.email, u.tel].join(' ').toLowerCase().includes(uq);
+  });
+  document.getElementById('admin-users-count').textContent = filteredUsers.length;
+
+  document.getElementById('admin-users-body').innerHTML = filteredUsers.map(u => {
+    const isSelf = u.id === currentProfile.id;
+    const isAdmin = u.role === 'admin';
+    return `
     <tr>
-      <td><strong>${esc(u.nombre + ' ' + (u.apellido || ''))}</strong></td>
+      <td><strong>${esc(u.nombre + ' ' + (u.apellido || ''))}</strong>${isSelf ? ' <span class="badge-self">Vos</span>' : ''}</td>
       <td class="td-sm">${esc(u.email || '—')}</td>
       <td class="td-sm">${esc(u.tel || '—')}</td>
-      <td class="td-sm">${orgs.filter(o => o.uid === u.id).length}</td>
-      <td><span class="role-badge ${u.role === 'admin' ? 'role-badge--admin' : 'role-badge--user'}">${u.role === 'admin' ? 'Admin' : 'Usuario'}</span></td>
-    </tr>`).join('');
-};
-
-window.deleteOrg = async function (id) {
-  if (!confirm('¿Eliminar esta empresa definitivamente?')) return;
-  try {
-    await Empresas.deleteEmpresa(id);
-    await refreshData();
-    renderAdmin();
-  } catch (e) {
-    alert(friendlyError(e));
-  }
-};
+      

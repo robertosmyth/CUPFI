@@ -191,4 +191,75 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:#f5f4fc;}
 .app-loading{min-height:100vh;display:flex;align-items:center;justify-content:center;color:var(--fi-gray);font-size:13px;}
 .note-box{font-size:11px;color:var(--fi-gray);background:var(--fi-light);border-radius:6px;padding:8px 12px;margin-bottom:1rem;line-height:1.5;}
 
-/* ═══
+/* ══════════════════════════════════════════════
+   UTILIDADES DE LAYOUT (set chico y reutilizable;
+   reemplazan los style="" sueltos que había en el
+   HTML y en el JS que arma el detalle/mapa/admin)
+   ══════════════════════════════════════════════ */
+.hidden{display:none !important;}
+.u-clearfix{clear:both;}
+.table-wrap{overflow-x:auto;}
+.action-row{display:flex;gap:10px;margin-top:1rem;}
+.action-row-wrap{margin-top:1.5rem;flex-wrap:wrap;}
+.mt-1{margin-top:1rem;}
+.mb-2{margin-bottom:1.5rem;}
+.icon-sm{font-size:12px;}
+.icon-info{color:var(--fi-c2);margin-right:6px;}
+.label-note{font-weight:300;color:var(--fi-gray);}
+.hint-text{font-size:12px;color:var(--fi-gray);line-height:1.6;margin-bottom:1.25rem;}
+.hint-text.hint-tight{line-height:1.5;margin-bottom:1rem;}
+.file-input{font-size:12px;width:100%;}
+.muted-note{font-size:12px;color:var(--fi-gray);}
+.muted-sm{font-size:11px;color:var(--fi-gray);}
+.td-sm{font-size:11px;}
+.flex-grow{flex:1;}
+.mb-0{margin-bottom:0;}
+
+/* Tamaños de avatar/logo (variantes sobre .avatar / .org-logo-img) */
+.sz-30{width:30px;height:30px;}
+.avatar.sz-30{font-size:9px;}
+.sz-38{width:38px;height:38px;}
+.sz-56{width:56px;height:56px;}
+
+/* Detalle de empresa (modal) */
+.detail-head{display:flex;gap:12px;align-items:flex-start;margin-bottom:12px;}
+.detail-name{font-size:15px;font-weight:600;color:#1a1a1a;}
+.detail-role{font-size:12px;color:var(--fi-gray);}
+.detail-sector{font-size:11px;font-weight:600;color:var(--fi-c1);margin-top:3px;}
+.detail-meta-row{font-size:11px;color:var(--fi-gray);margin-bottom:6px;}
+.detail-icon{font-size:12px;margin-right:4px;color:var(--fi-c2);}
+.detail-desc{font-size:12px;color:#555;line-height:1.65;margin-top:6px;}
+.detail-edit-wrap{border-top:1px solid var(--fi-light2);padding-top:12px;margin-top:4px;}
+.drow i{font-size:14px;color:var(--fi-c2);}
+.link-plain{color:var(--fi-c1);}
+.link-maps{font-size:11px;color:var(--fi-c1);text-decoration:none;display:inline-flex;align-items:center;gap:4px;margin-top:4px;}
+.link-maps i{font-size:12px;}
+.btn-edit-inline i{font-size:13px;}
+.match-highlight{color:var(--offer-txt);font-weight:600;}
+
+/* Iconos dentro de tarjetas y listas */
+.card-sector i, .match-label i{font-size:11px;margin-right:3px;}
+.card-meta i{font-size:11px;}
+.mine-badge i{font-size:10px;margin-right:3px;}
+.user-companies-title i{font-size:11px;margin-right:4px;}
+.user-contact i{color:var(--fi-c2);}
+.badge-self{font-size:10px;background:var(--fi-light2);color:var(--fi);padding:1px 8px;border-radius:10px;font-weight:600;}
+.empty--full{grid-column:1/-1;}
+.tag-block{margin-top:5px;display:inline-block;}
+.rtag-remove{opacity:.6;cursor:pointer;font-size:12px;}
+
+/* Badge de rol (panel admin) */
+.role-badge{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600;}
+.role-badge--admin{background:#fff8e1;color:#f57f17;}
+.role-badge--user{background:var(--fi-light2);color:var(--fi);}
+
+/* Popup del mapa (Leaflet) */
+.map-popup{font-family:'Poppins',sans-serif;min-width:210px;padding:4px;}
+.map-popup-head{overflow:hidden;margin-bottom:8px;}
+.map-popup-media{float:left;margin-right:8px;}
+.map-popup-info{overflow:hidden;}
+.map-popup-name{font-size:13px;font-weight:600;color:#1a1a1a;line-height:1.3;}
+.map-popup-sector{font-size:11px;color:var(--fi-c2);font-weight:600;}
+.map-popup-meta{font-size:11px;color:#555;margin-bottom:2px;}
+.map-popup-addr{font-size:10px;color:var(--fi-gray);margin-bottom:8px;}
+.map-popup-btn{background:var(--fi);color:#fff;border:none;border-radius:4px;font-size:11px;padding:5px 12px;cursor:pointer;font-family:'Poppins',sans-serif;width:100%;}

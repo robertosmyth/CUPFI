@@ -24,8 +24,11 @@ CUPFI/
 │       ├── utils.js           # Helpers (escape HTML, validaciones, etc.)
 │       └── main.js            # UI: navegación, renderizado, listeners
 ├── sql/
-│   ├── 001_schema.sql          # Esquema completo (documentación / proyecto nuevo)
-│   └── 002_migration_v2.sql    # Migración a correr en un proyecto ya existente
+│   ├── 001_schema.sql                     # Esquema completo (documentación / proyecto nuevo)
+│   ├── 002_migration_v2.sql               # Migración a correr en un proyecto ya existente
+│   ├── 003_lockdown_role_and_uid.sql      # Bloquea auto-escalación de rol / robo de empresa
+│   ├── 004_admin_role_management.sql      # Permite que un admin cambie el rol de otros usuarios
+│   └── 005_seed_demo_empresas.sql         # (Opcional) 17 empresas de ejemplo para poblar el directorio
 └── README.md
 ```
 
@@ -54,10 +57,12 @@ CUPFI/
 - Los logos se validan en tamaño (máx. 800 KB) y tipo de archivo (imágenes
   únicamente) antes de subirse.
 - Nadie puede auto-promoverse a admin ni "transferir" una empresa: dos
-  triggers en la base de datos (`sql/003_lockdown_role_and_uid.sql`) ignoran
-  cualquier intento de cambiar `profiles.role` o `empresas.uid` desde el
-  cliente, sin importar quién sea el dueño de la fila. Cambiar el rol de un
-  usuario solo se puede hacer desde el dashboard de Supabase.
+  triggers en la base de datos (`sql/003_lockdown_role_and_uid.sql`, refinado
+  por `sql/004_admin_role_management.sql`) ignoran cualquier intento de
+  cambiar `profiles.role` o `empresas.uid` desde el cliente, salvo un caso: un
+  usuario que ya es admin sí puede cambiar el rol de **otro** usuario, desde
+  el panel Admin de la app (buscar usuario → "Hacer admin" / "Quitar admin").
+  Un usuario común nunca puede tocar su propio rol ni el de nadie más.
 
 ## Configuración inicial en Supabase (una sola vez)
 
@@ -76,13 +81,27 @@ completa falta correr una migración chica:
 3. Pegá y ejecutá también [`sql/003_lockdown_role_and_uid.sql`](sql/003_lockdown_role_and_uid.sql),
    que impide que un usuario se auto-promueva a admin o "robe" una empresa
    cambiando su dueño desde el cliente (ver sección de seguridad arriba).
-4. Registrate normalmente desde la app (pestaña "Registrarse").
-5. Para convertirte en administrador, en el **Table Editor** de Supabase
-   abrí la tabla `profiles` y cambiá tu fila: `role = admin`. O corré en el
-   SQL Editor:
+4. Pegá y ejecutá [`sql/004_admin_role_management.sql`](sql/004_admin_role_management.sql),
+   que habilita la funcionalidad de gestión de usuarios del panel Admin
+   (buscar un usuario y cambiarle el rol). Sin este paso, el resto de la app
+   funciona igual, pero los botones "Hacer admin" / "Quitar admin" van a
+   fallar porque la base de datos todavía bloquea cualquier cambio de rol.
+5. Registrate normalmente desde la app (pestaña "Registrarse"). La
+   **primera** cuenta de un proyecto nuevo no es admin automáticamente:
+   hay que asignarle el rol manualmente (paso siguiente). A partir de ahí,
+   ese primer admin puede promover a cualquier otro usuario desde la propia
+   app, sin volver a tocar la base de datos.
+6. Para convertirte en administrador la primera vez, en el **Table Editor**
+   de Supabase abrí la tabla `profiles` y cambiá tu fila: `role = admin`. O
+   corré en el SQL Editor:
    ```sql
    update public.profiles set role = 'admin' where email = 'tu-email@ejemplo.com';
    ```
+7. (Opcional) Si querés que el directorio no arranque vacío, pegá y ejecutá
+   [`sql/005_seed_demo_empresas.sql`](sql/005_seed_demo_empresas.sql): carga
+   17 organizaciones de ejemplo (las mismas del prototipo original) sin
+   asociarlas a ningún usuario real. Un admin puede editarlas o borrarlas
+   luego desde el panel Admin.
 
 Si en algún momento armás un proyecto de Supabase nuevo desde cero, usá
 [`sql/001_schema.sql`](sql/001_schema.sql), que contiene el esquema completo
@@ -101,41 +120,4 @@ que configurar es a dónde te lleva el link una vez confirmado:
 **Authentication → URL Configuration**:
 - **Site URL**: `https://<tu-usuario>.github.io/<tu-repo>/` (por ejemplo
   `https://robertosmyth.github.io/CUPFI/`). Si queda con el valor por
-  defecto (`http://localhost:3000` o similar), el link del mail te va a
-  llevar a una página que no existe — el mail y la confirmación en sí
-  funcionan igual, solo cambia la redirección final.
-- **Redirect URLs**: agregá esa misma URL a la lista permitida.
-
-Si más adelante querés usar tu propio dominio o servicio de email (por
-ejemplo para que los mails salgan desde una dirección propia en vez de la
-genérica de Supabase), se configura en **Authentication → Settings → SMTP
-Settings** con un proveedor externo (Resend, Postmark, SendGrid, etc.). Es
-opcional: no afecta la seguridad ni el funcionamiento, solo la marca/remitente
-del mail.
-
-## Publicar el sitio (GitHub Pages)
-
-1. Hacer push de este repositorio a la rama `main` de GitHub.
-2. En GitHub: **Settings → Pages → Build and deployment → Source**: elegir
-   "Deploy from a branch", rama `main`, carpeta `/ (root)`.
-3. A los pocos minutos el sitio queda publicado en
-   `https://<usuario>.github.io/<repo>/`.
-
-Al ser un sitio estático, no hace falta build, servidor propio, ni variables
-de entorno secretas: la única clave usada en el cliente es la publishable
-key, que es segura de publicar.
-
-## Desarrollo local
-
-No requiere instalación. Alcanza con abrir `index.html` con un servidor
-estático simple, por ejemplo:
-
-```bash
-npx serve .
-# o
-python3 -m http.server 8080
-```
-
-(Abrir `index.html` directamente con `file://` también funciona, salvo
-restricciones de CORS de algunos navegadores con módulos ES; si eso pasa,
-usá alguno de los comandos de arriba.)
+  defecto (`http://

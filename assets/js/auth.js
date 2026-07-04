@@ -56,3 +56,15 @@ export async function listProfiles() {
   if (error) throw error;
   return data;
 }
+
+// Cambia el rol de un usuario. Solo funciona si quien llama ya es admin:
+// la base de datos lo hace cumplir con RLS + un trigger (ver
+// sql/003_lockdown_role_and_uid.sql y sql/004_admin_role_management.sql),
+// no es una regla que dependa del código del cliente.
+export async function setUserRole(userId, role) {
+  const supabase = await getSupabase();
+  const { data, error } = await supabase.from('profiles').update({ role }).eq('id', userId).select().maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('No se pudo cambiar el rol (¿ya no sos admin, o el usuario no existe?).');
+  return data;
+}
