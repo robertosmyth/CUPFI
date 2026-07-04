@@ -54,7 +54,7 @@
       <input class="fi" type="email" id="r-email" placeholder="tu@email.com">
       <label class="fl">Teléfono móvil *</label>
       <input class="fi" type="tel" id="r-tel" placeholder="+54 11 1234-5678">
-      <label class="fl">Contraseña * <span style="font-weight:300;color:var(--fi-gray)">(mín. 6 caracteres)</span></label>
+      <label class="fl">Contraseña * <span class="label-note">(mín. 6 caracteres)</span></label>
       <input class="fi" type="password" id="r-pass" placeholder="••••••••">
       <label class="fl">Confirmar contraseña *</label>
       <input class="fi" type="password" id="r-pass2" placeholder="••••••••" onkeydown="if(event.key==='Enter')doRegister()">
@@ -90,11 +90,11 @@
       <button class="tab-btn" onclick="showScreen('mapa')"><i class="ti ti-map-2"></i> Mapa</button>
       <button class="tab-btn" onclick="showScreen('mis-empresas')"><i class="ti ti-star"></i> Mis empresas</button>
       <button class="tab-btn" onclick="showScreen('registrar')"><i class="ti ti-plus"></i> Agregar</button>
-      <button class="tab-btn admin-tab" id="admin-tab-btn" style="display:none" onclick="showScreen('admin')"><i class="ti ti-shield"></i> Admin</button>
+      <button class="tab-btn admin-tab hidden" id="admin-tab-btn" onclick="showScreen('admin')"><i class="ti ti-shield"></i> Admin</button>
       <div class="user-pill">
-        <i class="ti ti-user" style="font-size:12px"></i>
+        <i class="ti ti-user icon-sm"></i>
         <span id="user-name-pill">—</span>
-        <span class="admin-badge-pill" id="admin-badge" style="display:none">Admin</span>
+        <span class="admin-badge-pill hidden" id="admin-badge">Admin</span>
         <button onclick="doLogout()">Salir</button>
       </div>
     </div>
@@ -145,7 +145,7 @@
         <div class="section-title">Oportunidades de vinculación detectadas</div>
         <span class="count-pill" id="vin-count">0</span>
       </div>
-      <p style="font-size:12px;color:var(--fi-gray);margin-bottom:1.25rem;line-height:1.6;">Organizaciones cuyas <strong>necesidades sin cubrir</strong> coinciden con <strong>servicios o productos</strong> de otra organización de la red.</p>
+      <p class="hint-text">Organizaciones cuyas <strong>necesidades sin cubrir</strong> coinciden con <strong>servicios o productos</strong> de otra organización de la red.</p>
       <div class="vin-list" id="vin-list"></div>
     </div>
 
@@ -156,7 +156,7 @@
         <span class="count-pill" id="map-count">0</span>
       </div>
       <div class="map-notice">
-        <i class="ti ti-info-circle" style="color:var(--fi-c2);margin-right:6px;"></i>
+        <i class="ti ti-info-circle icon-info"></i>
         Las organizaciones aparecen en el mapa cuando tienen <strong>ciudad registrada</strong>. Hacé clic en un marcador para ver el nombre, logo y graduado.
         El mapa usa OpenStreetMap y no requiere clave API.
       </div>
@@ -175,7 +175,7 @@
     <!-- REGISTRAR / EDITAR -->
     <div class="screen" id="screen-registrar">
       <div class="form-wrap">
-        <div class="section-header" style="margin-bottom:1.5rem;">
+        <div class="section-header mb-2">
           <div class="section-title" id="form-screen-title">Agregar empresa u organización</div>
         </div>
         <input type="hidden" id="f-edit-id" value="">
@@ -207,10 +207,10 @@
 
         <div class="form-group">
           <label class="form-label">Logo de la empresa</label>
-          <input type="file" id="f-logo" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" onchange="previewLogo()" style="font-size:12px;width:100%;">
+          <input type="file" id="f-logo" class="file-input" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" onchange="previewLogo()">
           <div class="logo-preview-wrap">
-            <img id="logo-preview-img" class="logo-preview" alt="logo preview">
-            <button class="logo-clear" id="logo-clear-btn" style="display:none" onclick="clearLogo()">✕ Quitar logo</button>
+            <img id="logo-preview-img" class="logo-preview hidden" alt="logo preview">
+            <button class="logo-clear hidden" id="logo-clear-btn" onclick="clearLogo()">✕ Quitar logo</button>
           </div>
         </div>
 
@@ -240,25 +240,25 @@
         <div class="form-section">Descripción y servicios</div>
         <div class="form-group"><label class="form-label">Descripción general</label><textarea class="form-input form-textarea" id="f-desc" placeholder="Actividad principal, mercados, trayectoria..."></textarea></div>
         <div class="form-group">
-          <label class="form-label">Servicios / Productos <span style="font-weight:300;color:var(--fi-gray)">(Enter para agregar cada uno)</span></label>
+          <label class="form-label">Servicios / Productos <span class="label-note">(Enter para agregar cada uno)</span></label>
           <div class="tag-iw" id="wrap-ofertas"><input type="text" id="input-ofertas" placeholder="Ej: Metrología industrial..." onkeydown="addTag(event,'ofertas')"></div>
         </div>
         <div class="form-section">Instalaciones disponibles</div>
         <div class="form-group">
-          <label class="form-label">Equipamiento e instalaciones <span style="font-weight:300;color:var(--fi-gray)">(Enter para agregar cada uno)</span></label>
+          <label class="form-label">Equipamiento e instalaciones <span class="label-note">(Enter para agregar cada uno)</span></label>
           <div class="tag-iw" id="wrap-instalaciones"><input type="text" id="input-instalaciones" placeholder="Ej: Laboratorio, CNC..." onkeydown="addTag(event,'instalaciones')"></div>
         </div>
         <div class="form-section">Necesidades</div>
         <div class="form-group">
-          <label class="form-label">Necesidades sin proveedor <span style="font-weight:300;color:var(--fi-gray)">(Enter para agregar cada una)</span></label>
+          <label class="form-label">Necesidades sin proveedor <span class="label-note">(Enter para agregar cada una)</span></label>
           <div class="tag-iw" id="wrap-needs-uncovered"><input type="text" id="input-needs-uncovered" placeholder="Ej: Análisis de fatiga de materiales..." onkeydown="addTag(event,'needs-uncovered')"></div>
         </div>
         <div class="form-group">
-          <label class="form-label">Necesidades cubiertas con proveedores <span style="font-weight:300;color:var(--fi-gray)">(Enter para agregar cada una)</span></label>
+          <label class="form-label">Necesidades cubiertas con proveedores <span class="label-note">(Enter para agregar cada una)</span></label>
           <div class="tag-iw" id="wrap-needs-covered"><input type="text" id="input-needs-covered" placeholder="Ej: Mantenimiento eléctrico..." onkeydown="addTag(event,'needs-covered')"></div>
         </div>
 
-        <div style="display:flex;gap:10px;margin-top:1.5rem;flex-wrap:wrap;">
+        <div class="action-row action-row-wrap">
           <button class="btn-prim" id="form-submit-btn" onclick="guardarOrg()"><i class="ti ti-check"></i> <span id="form-btn-label">Registrar empresa</span></button>
           <button class="btn-out" onclick="cancelEdit()">Cancelar / Limpiar</button>
         </div>
@@ -269,15 +269,15 @@
     <!-- ADMIN -->
     <div class="screen" id="screen-admin">
       <div class="admin-section-title"><i class="ti ti-building"></i> Gestión de empresas <span class="admin-badge">Admin</span></div>
-      <div style="overflow-x:auto;">
+      <div class="table-wrap">
         <table class="admin-table">
           <thead><tr><th>Logo</th><th>Empresa</th><th>CUIT</th><th>Sector</th><th>Referente</th><th>Ubicación</th><th>Acciones</th></tr></thead>
           <tbody id="admin-orgs-body"></tbody>
         </table>
       </div>
-      <div class="admin-section-title" style="margin-top:1rem;"><i class="ti ti-users"></i> Usuarios registrados <span class="admin-badge">Admin</span></div>
+      <div class="admin-section-title mt-1"><i class="ti ti-users"></i> Usuarios registrados <span class="admin-badge">Admin</span></div>
       <div class="note-box">Por seguridad, borrar cuentas de usuario no está disponible desde el navegador (requeriría exponer una clave con privilegios totales). Si necesitás dar de baja a alguien, hacelo desde el panel de Supabase (Authentication → Users).</div>
-      <div style="overflow-x:auto;">
+      <div class="table-wrap">
         <table class="admin-table">
           <thead><tr><th>Nombre</th><th>Email</th><th>Teléfono</th><th>Empresas</th><th>Rol</th></tr></thead>
           <tbody id="admin-users-body"></tbody>
@@ -303,7 +303,7 @@
       <h2 id="modal-ub-title">Editar ubicación</h2>
       <button class="modal-close" onclick="closeModal('modal-ubicacion')"><i class="ti ti-x"></i></button>
     </div>
-    <p style="font-size:12px;color:var(--fi-gray);margin-bottom:1rem;line-height:1.5;">Modificá la dirección. Los cambios se guardan y se reflejan en el mapa.</p>
+    <p class="hint-text hint-tight">Modificá la dirección. Los cambios se guardan y se reflejan en el mapa.</p>
     <input type="hidden" id="ub-id">
     <div class="form-group"><label class="form-label">Calle y número</label><input class="form-input" id="ub-calle" type="text" placeholder="Ej: Av. Corrientes 1234"></div>
     <div class="form-row">
@@ -311,7 +311,7 @@
       <div class="form-group"><label class="form-label">Provincia / Estado</label><input class="form-input" id="ub-provincia" type="text"></div>
     </div>
     <div class="form-group"><label class="form-label">País</label><input class="form-input" id="ub-pais" type="text"></div>
-    <div style="display:flex;gap:10px;margin-top:1rem;">
+    <div class="action-row">
       <button class="btn-prim" onclick="guardarUbicacion()"><i class="ti ti-map-pin"></i> Guardar</button>
       <button class="btn-out" onclick="closeModal('modal-ubicacion')">Cancelar</button>
     </div>
@@ -322,3 +322,4 @@
 <script type="module" src="assets/js/main.js"></script>
 </body>
 </html>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                             

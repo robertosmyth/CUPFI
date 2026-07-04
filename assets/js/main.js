@@ -146,8 +146,8 @@ async function enterApp() {
   document.getElementById('main-app').style.display = 'block';
   document.getElementById('user-name-pill').textContent = currentProfile.nombre || currentProfile.email;
   const isAdmin = currentProfile.role === 'admin';
-  document.getElementById('admin-tab-btn').style.display = isAdmin ? '' : 'none';
-  document.getElementById('admin-badge').style.display = isAdmin ? '' : 'none';
+  document.getElementById('admin-tab-btn').classList.toggle('hidden', !isAdmin);
+  document.getElementById('admin-badge').classList.toggle('hidden', !isAdmin);
 
   await refreshData();
   showScreen('directorio');
@@ -164,11 +164,22 @@ async function refreshData() {
 // ══════════════════════════════════════════════
 function getProfileById(uid) { return profiles.find(u => u.id === uid); }
 
+// Clases de tamaño (ver assets/css/style.css): 42px es el tamaño por
+// defecto de .avatar/.org-logo-img, así que solo hace falta un modificador
+// cuando el tamaño pedido es distinto.
+function sizeClass(size) {
+  if (size >= 56) return 'sz-56';
+  if (size >= 38 && size < 42) return 'sz-38';
+  if (size <= 30) return 'sz-30';
+  return '';
+}
+
 function logoOrAvatar(o, size = 42) {
+  const sc = sizeClass(size);
   if (o.logo) {
-    return `<img src="${esc(o.logo)}" class="org-logo-img" style="width:${size}px;height:${size}px;" alt="logo de ${esc(o.nombre)}">`;
+    return `<img src="${esc(o.logo)}" class="org-logo-img ${sc}" alt="logo de ${esc(o.nombre)}">`;
   }
-  return `<div class="avatar" style="width:${size}px;height:${size}px;font-size:${size < 36 ? 9 : 13}px;">${esc(ini(o.nombre))}</div>`;
+  return `<div class="avatar ${sc}">${esc(ini(o.nombre))}</div>`;
 }
 
 // ══════════════════════════════════════════════
@@ -230,20 +241,20 @@ window.renderDir = function () {
 
   const grid = document.getElementById('org-grid');
   if (!filtered.length) {
-    grid.innerHTML = '<div class="empty" style="grid-column:1/-1"><i class="ti ti-building-off"></i>Sin resultados para ese criterio.</div>';
+    grid.innerHTML = '<div class="empty empty--full"><i class="ti ti-building-off"></i>Sin resultados para ese criterio.</div>';
     return;
   }
   grid.innerHTML = filtered.map(o => {
     const mine = currentProfile && o.uid === currentProfile.id;
     const loc = [o.ciudad, o.provincia].filter(Boolean).join(', ');
     return `<div class="org-card${mine ? ' mine' : ''}" onclick="openDetail(${o.id})">
-      ${mine ? '<div class="mine-badge"><i class="ti ti-star" style="font-size:10px;margin-right:3px"></i>Mi empresa</div>' : ''}
+      ${mine ? '<div class="mine-badge"><i class="ti ti-star"></i>Mi empresa</div>' : ''}
       <div class="card-head">${logoOrAvatar(o)}
         <div><div class="card-org-name">${esc(o.nombre)}</div><div class="card-ref">${esc(o.referente)} · ${esc(o.cargo)}</div></div>
       </div>
-      <div class="card-sector"><i class="ti ti-tag" style="font-size:11px;margin-right:3px"></i>${esc(o.sector)}</div>
-      <div class="card-meta"><i class="ti ti-id" style="font-size:11px"></i>CUIT: ${esc(o.cuit)}</div>
-      ${loc ? `<div class="card-meta"><i class="ti ti-map-pin" style="font-size:11px"></i>${esc(loc)}</div>` : ''}
+      <div class="card-sector"><i class="ti ti-tag"></i>${esc(o.sector)}</div>
+      <div class="card-meta"><i class="ti ti-id"></i>CUIT: ${esc(o.cuit)}</div>
+      ${loc ? `<div class="card-meta"><i class="ti ti-map-pin"></i>${esc(loc)}</div>` : ''}
       <div class="tags">
         ${(o.ofertas || []).slice(0, 2).map(t => `<span class="tag tag-offer">${esc(t)}</span>`).join('')}
         ${(o.needsUncovered || []).slice(0, 1).map(t => `<span class="tag tag-need">${esc(t)}</span>`).join('')}
@@ -267,7 +278,7 @@ window.renderGraduados = function () {
   document.getElementById('grad-count').textContent = filtered.length;
   const grid = document.getElementById('grad-grid');
   if (!filtered.length) {
-    grid.innerHTML = '<div class="empty" style="grid-column:1/-1"><i class="ti ti-users-off"></i>Sin resultados.</div>';
+    grid.innerHTML = '<div class="empty empty--full"><i class="ti ti-users-off"></i>Sin resultados.</div>';
     return;
   }
   grid.innerHTML = filtered.map(u => {
@@ -277,14 +288,14 @@ window.renderGraduados = function () {
       <div class="user-card-head">
         <div class="user-avatar">${esc((u.nombre?.[0] || '') + (u.apellido?.[0] || ''))}</div>
         <div>
-          <div class="user-name">${esc(u.nombre + ' ' + u.apellido)} ${isSelf ? '<span style="font-size:10px;background:var(--fi-light2);color:var(--fi);padding:1px 8px;border-radius:10px;font-weight:600;">Yo</span>' : ''}</div>
-          <div class="user-contact"><i class="ti ti-mail" style="color:var(--fi-c2)"></i>${esc(u.email || '—')}</div>
-          ${u.tel ? `<div class="user-contact"><i class="ti ti-phone" style="color:var(--fi-c2)"></i>${esc(u.tel)}</div>` : ''}
+          <div class="user-name">${esc(u.nombre + ' ' + u.apellido)} ${isSelf ? '<span class="badge-self">Yo</span>' : ''}</div>
+          <div class="user-contact"><i class="ti ti-mail"></i>${esc(u.email || '—')}</div>
+          ${u.tel ? `<div class="user-contact"><i class="ti ti-phone"></i>${esc(u.tel)}</div>` : ''}
         </div>
       </div>
       <div class="user-companies">
-        <div class="user-companies-title"><i class="ti ti-building" style="font-size:11px;margin-right:4px"></i>${uOrgs.length} empresa${uOrgs.length !== 1 ? 's' : ''}</div>
-        ${uOrgs.length === 0 ? '<div style="font-size:12px;color:var(--fi-gray);">Sin empresas registradas aún.</div>' : ''}
+        <div class="user-companies-title"><i class="ti ti-building"></i>${uOrgs.length} empresa${uOrgs.length !== 1 ? 's' : ''}</div>
+        ${uOrgs.length === 0 ? '<div class="muted-note">Sin empresas registradas aún.</div>' : ''}
         ${uOrgs.map(o => `
           <div class="mini-company" onclick="openDetail(${o.id})">
             ${o.logo ? `<img src="${esc(o.logo)}" class="mini-logo" alt="logo">` : `<div class="mini-avatar">${esc(ini(o.nombre))}</div>`}
@@ -364,24 +375,20 @@ window.renderMapa = async function () {
 
     const u = getProfileById(o.uid);
     const uName = u ? `${u.nombre} ${u.apellido}` : '—';
-    const logoHtml = o.logo
-      ? `<img src="${esc(o.logo)}" style="width:38px;height:38px;object-fit:contain;border-radius:4px;border:1px solid #eee;float:left;margin-right:8px;">`
-      : `<div style="width:38px;height:38px;border-radius:4px;background:#3B24C8;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#fff;float:left;margin-right:8px;">${esc(ini(o.nombre))}</div>`;
 
-    const popupHtml = `<div style="font-family:'Poppins',sans-serif;min-width:210px;padding:4px;">
-      <div style="overflow:hidden;margin-bottom:8px;">
-        ${logoHtml}
-        <div style="overflow:hidden;">
-          <div style="font-size:13px;font-weight:600;color:#1a1a1a;line-height:1.3;">${esc(o.nombre)}</div>
-          <div style="font-size:11px;color:#6B7CFF;font-weight:600;">${esc(o.sector)}</div>
+    const popupHtml = `<div class="map-popup">
+      <div class="map-popup-head">
+        <div class="map-popup-media">${logoOrAvatar(o, 38)}</div>
+        <div class="map-popup-info">
+          <div class="map-popup-name">${esc(o.nombre)}</div>
+          <div class="map-popup-sector">${esc(o.sector)}</div>
         </div>
-        <div style="clear:both"></div>
+        <div class="u-clearfix"></div>
       </div>
-      <div style="font-size:11px;color:#555;margin-bottom:2px;"><strong>Graduado:</strong> ${esc(uName)}</div>
-      <div style="font-size:11px;color:#555;margin-bottom:2px;"><strong>Cargo:</strong> ${esc(o.cargo)}</div>
-      <div style="font-size:10px;color:#868686;margin-bottom:8px;">${esc(addr)}</div>
-      <button onclick="window._openDetail(${o.id})"
-        style="background:#3B24C8;color:#fff;border:none;border-radius:4px;font-size:11px;padding:5px 12px;cursor:pointer;font-family:'Poppins',sans-serif;width:100%;">
+      <div class="map-popup-meta"><strong>Graduado:</strong> ${esc(uName)}</div>
+      <div class="map-popup-meta"><strong>Cargo:</strong> ${esc(o.cargo)}</div>
+      <div class="map-popup-addr">${esc(addr)}</div>
+      <button onclick="window._openDetail(${o.id})" class="map-popup-btn">
         Ver detalle completo
       </button>
     </div>`;
@@ -411,7 +418,7 @@ window.renderMias = function () {
   document.getElementById('mis-count').textContent = mine.length;
   const grid = document.getElementById('mis-grid');
   if (!mine.length) {
-    grid.innerHTML = `<div class="empty" style="grid-column:1/-1">
+    grid.innerHTML = `<div class="empty empty--full">
       <i class="ti ti-building-plus"></i>
       Todavía no registraste ninguna empresa.<br><br>
       <button class="btn-prim" onclick="showScreen('registrar')">Agregar empresa</button>
@@ -420,13 +427,13 @@ window.renderMias = function () {
   }
   grid.innerHTML = mine.map(o => `
     <div class="org-card mine" onclick="openDetail(${o.id})">
-      <div class="mine-badge"><i class="ti ti-star" style="font-size:10px;margin-right:3px"></i>Mi empresa</div>
+      <div class="mine-badge"><i class="ti ti-star"></i>Mi empresa</div>
       <div class="card-head">${logoOrAvatar(o)}
         <div><div class="card-org-name">${esc(o.nombre)}</div><div class="card-ref">${esc(o.referente)} · ${esc(o.cargo)}</div></div>
       </div>
       <div class="card-sector">${esc(o.sector)}</div>
       <div class="card-meta">CUIT: ${esc(o.cuit)}</div>
-      ${o.ciudad ? `<div class="card-meta"><i class="ti ti-map-pin" style="font-size:11px"></i>${esc(o.ciudad)}</div>` : ''}
+      ${o.ciudad ? `<div class="card-meta"><i class="ti ti-map-pin"></i>${esc(o.ciudad)}</div>` : ''}
       <div class="tags">
         ${(o.ofertas || []).slice(0, 2).map(t => `<span class="tag tag-offer">${esc(t)}</span>`).join('')}
         ${(o.needsUncovered || []).slice(0, 1).map(t => `<span class="tag tag-need">${esc(t)}</span>`).join('')}
@@ -449,29 +456,29 @@ window.openDetail = function (id) {
   document.getElementById('md-title').textContent = o.nombre;
   document.getElementById('modal-body').innerHTML = `
     <div class="dsec">
-      <div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:12px;">
+      <div class="detail-head">
         ${logoOrAvatar(o, 56)}
         <div>
-          <div style="font-size:15px;font-weight:600;color:#1a1a1a;">${esc(o.referente)}</div>
-          <div style="font-size:12px;color:var(--fi-gray);">${esc(o.cargo)}</div>
-          <div style="font-size:11px;font-weight:600;color:var(--fi-c1);margin-top:3px;">${esc(o.sector)}</div>
+          <div class="detail-name">${esc(o.referente)}</div>
+          <div class="detail-role">${esc(o.cargo)}</div>
+          <div class="detail-sector">${esc(o.sector)}</div>
         </div>
       </div>
-      <div style="font-size:11px;color:var(--fi-gray);margin-bottom:4px;"><i class="ti ti-id" style="font-size:12px;margin-right:4px;color:var(--fi-c2)"></i>CUIT: <strong>${esc(o.cuit)}</strong></div>
-      ${u ? `<div style="font-size:11px;color:var(--fi-gray);margin-bottom:8px;"><i class="ti ti-user-check" style="font-size:12px;margin-right:4px;color:var(--fi-c2)"></i>Registrado por: <strong>${esc(u.nombre + ' ' + u.apellido)}</strong></div>` : ''}
-      ${o.desc ? `<p style="font-size:12px;color:#555;line-height:1.65;margin-top:6px;">${esc(o.desc)}</p>` : ''}
+      <div class="detail-meta-row"><i class="ti ti-id detail-icon"></i>CUIT: <strong>${esc(o.cuit)}</strong></div>
+      ${u ? `<div class="detail-meta-row"><i class="ti ti-user-check detail-icon"></i>Registrado por: <strong>${esc(u.nombre + ' ' + u.apellido)}</strong></div>` : ''}
+      ${o.desc ? `<p class="detail-desc">${esc(o.desc)}</p>` : ''}
     </div>
 
     ${(o.emailOrg || o.tel || o.web) ? `<div class="dsec"><div class="dsec-title">Contacto</div>
-      ${o.emailOrg ? `<div class="drow"><i class="ti ti-mail" style="font-size:14px;color:var(--fi-c2)"></i>${esc(o.emailOrg)}</div>` : ''}
-      ${o.tel ? `<div class="drow"><i class="ti ti-phone" style="font-size:14px;color:var(--fi-c2)"></i>${esc(o.tel)}</div>` : ''}
-      ${o.web ? `<div class="drow"><i class="ti ti-world" style="font-size:14px;color:var(--fi-c2)"></i><a href="${esc(o.web)}" target="_blank" rel="noopener noreferrer" style="color:var(--fi-c1)">${esc(o.web)}</a></div>` : ''}
+      ${o.emailOrg ? `<div class="drow"><i class="ti ti-mail"></i>${esc(o.emailOrg)}</div>` : ''}
+      ${o.tel ? `<div class="drow"><i class="ti ti-phone"></i>${esc(o.tel)}</div>` : ''}
+      ${o.web ? `<div class="drow"><i class="ti ti-world"></i><a href="${esc(o.web)}" target="_blank" rel="noopener noreferrer" class="link-plain">${esc(o.web)}</a></div>` : ''}
     </div>` : ''}
 
     ${addr ? `<div class="dsec"><div class="dsec-title">Ubicación</div>
-      <div class="drow"><i class="ti ti-map-pin" style="font-size:14px;color:var(--fi-c2)"></i>${esc(addr)}</div>
-      <a href="${mapsUrl}" target="_blank" rel="noopener noreferrer" style="font-size:11px;color:var(--fi-c1);text-decoration:none;display:inline-flex;align-items:center;gap:4px;margin-top:4px;">
-        <i class="ti ti-external-link" style="font-size:12px"></i>Abrir en Google Maps
+      <div class="drow"><i class="ti ti-map-pin"></i>${esc(addr)}</div>
+      <a href="${mapsUrl}" target="_blank" rel="noopener noreferrer" class="link-maps">
+        <i class="ti ti-external-link"></i>Abrir en Google Maps
       </a>
     </div>` : ''}
 
@@ -482,15 +489,15 @@ window.openDetail = function (id) {
 
     ${mx.length ? `<div class="dsec"><div class="dsec-title">Vinculaciones posibles</div>
       ${mx.map(m => `<div class="match-card" onclick="closeModal('modal-detalle');setTimeout(()=>openDetail(${m.org.id}),80)">
-        <div class="match-label"><i class="ti ti-arrows-exchange" style="font-size:11px;margin-right:3px"></i>puede cubrir su necesidad</div>
+        <div class="match-label"><i class="ti ti-arrows-exchange"></i>puede cubrir su necesidad</div>
         <div class="match-name">${esc(m.org.nombre)}</div>
-        <div style="font-size:11px;color:var(--fi-gray);">${esc(m.org.referente)}</div>
-        <div class="match-detail">${esc(m.need)} → <span style="color:var(--offer-txt);font-weight:600;">${esc(m.offer)}</span></div>
+        <div class="muted-sm">${esc(m.org.referente)}</div>
+        <div class="match-detail">${esc(m.need)} → <span class="match-highlight">${esc(m.offer)}</span></div>
       </div>`).join('')}
     </div>` : ''}
 
-    ${mine ? `<div class="dsec" style="border-top:1px solid var(--fi-light2);padding-top:12px;margin-top:4px;">
-      <button class="btn-edit-inline" onclick="startEdit(${o.id});closeModal('modal-detalle')"><i class="ti ti-pencil" style="font-size:13px"></i> Editar esta empresa</button>
+    ${mine ? `<div class="dsec detail-edit-wrap">
+      <button class="btn-edit-inline" onclick="startEdit(${o.id});closeModal('modal-detalle')"><i class="ti ti-pencil"></i> Editar esta empresa</button>
     </div>` : ''}
   `;
   document.getElementById('modal-detalle').classList.add('open');
@@ -518,8 +525,8 @@ window.previewLogo = function () {
   reader.onload = ev => {
     const img = document.getElementById('logo-preview-img');
     img.src = ev.target.result;
-    img.style.display = 'block';
-    document.getElementById('logo-clear-btn').style.display = '';
+    img.classList.remove('hidden');
+    document.getElementById('logo-clear-btn').classList.remove('hidden');
   };
   reader.readAsDataURL(file);
 };
@@ -529,8 +536,8 @@ window.clearLogo = function () {
   currentLogoUrl = null;
   document.getElementById('f-logo').value = '';
   const img = document.getElementById('logo-preview-img');
-  img.src = ''; img.style.display = 'none';
-  document.getElementById('logo-clear-btn').style.display = 'none';
+  img.src = ''; img.classList.add('hidden');
+  document.getElementById('logo-clear-btn').classList.add('hidden');
 };
 
 // ══════════════════════════════════════════════
@@ -579,8 +586,8 @@ window.startEdit = function (id) {
 
   const img = document.getElementById('logo-preview-img');
   const clr = document.getElementById('logo-clear-btn');
-  if (o.logo) { img.src = o.logo; img.style.display = 'block'; clr.style.display = ''; }
-  else { img.src = ''; img.style.display = 'none'; clr.style.display = 'none'; }
+  if (o.logo) { img.src = o.logo; img.classList.remove('hidden'); clr.classList.remove('hidden'); }
+  else { img.src = ''; img.classList.add('hidden'); clr.classList.add('hidden'); }
   document.getElementById('f-logo').value = '';
 
   Object.keys(tags).forEach(k => { tags[k] = []; });
@@ -612,8 +619,8 @@ function resetForm() {
   document.getElementById('f-tipo').value = 'Empresa';
   document.getElementById('f-logo').value = '';
   const img = document.getElementById('logo-preview-img');
-  img.src = ''; img.style.display = 'none';
-  document.getElementById('logo-clear-btn').style.display = 'none';
+  img.src = ''; img.classList.add('hidden');
+  document.getElementById('logo-clear-btn').classList.add('hidden');
   document.getElementById('cuit-check').textContent = '';
   currentLogoFile = null;
   currentLogoUrl = null;
@@ -757,14 +764,14 @@ window.renderVin = function () {
         <div class="vc-label">necesita</div>
         <div class="vc-name" onclick="openDetail(${m.seeker.id})">${esc(m.seeker.nombre)}</div>
         <div class="vc-ref">${esc(m.seeker.referente)}</div>
-        <span class="tag tag-need" style="margin-top:5px;display:inline-block;">${esc(m.need)}</span>
+        <span class="tag tag-need tag-block">${esc(m.need)}</span>
       </div>
       <div class="vc-arrow"><i class="ti ti-arrow-right"></i></div>
       <div>
         <div class="vc-label">puede proveer</div>
         <div class="vc-name" onclick="openDetail(${m.provider.id})">${esc(m.provider.nombre)}</div>
         <div class="vc-ref">${esc(m.provider.referente)}</div>
-        <span class="tag tag-offer" style="margin-top:5px;display:inline-block;">${esc(m.offer)}</span>
+        <span class="tag tag-offer tag-block">${esc(m.offer)}</span>
       </div>
     </div></div>`).join('');
 };
@@ -795,7 +802,7 @@ function renderTags(type) {
   tags[type].forEach((t, i) => {
     const el = document.createElement('span');
     el.className = `rtag ${tagCls[type]}`;
-    el.innerHTML = `${esc(t)} <span onclick="removeTag('${type}',${i})" style="opacity:.6;cursor:pointer;font-size:12px;">×</span>`;
+    el.innerHTML = `${esc(t)} <span class="rtag-remove" onclick="removeTag('${type}',${i})">×</span>`;
     wrap.insertBefore(el, inp);
   });
 }
@@ -808,12 +815,12 @@ window.renderAdmin = function () {
 
   document.getElementById('admin-orgs-body').innerHTML = orgs.map(o => `
     <tr>
-      <td>${o.logo ? `<img src="${esc(o.logo)}" style="width:30px;height:30px;object-fit:contain;border-radius:3px;border:1px solid #eee;">` : `<div class="avatar" style="width:30px;height:30px;font-size:9px;">${esc(ini(o.nombre))}</div>`}</td>
+      <td>${logoOrAvatar(o, 30)}</td>
       <td><strong>${esc(o.nombre)}</strong></td>
-      <td style="font-size:11px;color:var(--fi-gray);">${esc(o.cuit)}</td>
-      <td style="font-size:11px;">${esc(o.sector)}</td>
-      <td style="font-size:11px;">${esc(o.referente)}</td>
-      <td style="font-size:11px;">${esc([o.ciudad, o.provincia].filter(Boolean).join(', ')) || '—'}</td>
+      <td class="muted-sm">${esc(o.cuit)}</td>
+      <td class="td-sm">${esc(o.sector)}</td>
+      <td class="td-sm">${esc(o.referente)}</td>
+      <td class="td-sm">${esc([o.ciudad, o.provincia].filter(Boolean).join(', ')) || '—'}</td>
       <td><div class="action-btns">
         <button class="btn-edit-inline" onclick="startEdit(${o.id})" title="Editar empresa"><i class="ti ti-pencil"></i></button>
         <button class="btn-loc" onclick="openEditUbicacion(${o.id})" title="Editar ubicación"><i class="ti ti-map-pin"></i></button>
@@ -824,10 +831,10 @@ window.renderAdmin = function () {
   document.getElementById('admin-users-body').innerHTML = profiles.map(u => `
     <tr>
       <td><strong>${esc(u.nombre + ' ' + (u.apellido || ''))}</strong></td>
-      <td style="font-size:11px;">${esc(u.email || '—')}</td>
-      <td style="font-size:11px;">${esc(u.tel || '—')}</td>
-      <td style="font-size:11px;">${orgs.filter(o => o.uid === u.id).length}</td>
-      <td><span style="font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600;background:${u.role === 'admin' ? '#fff8e1' : 'var(--fi-light2)'};color:${u.role === 'admin' ? '#f57f17' : 'var(--fi)'};">${u.role === 'admin' ? 'Admin' : 'Usuario'}</span></td>
+      <td class="td-sm">${esc(u.email || '—')}</td>
+      <td class="td-sm">${esc(u.tel || '—')}</td>
+      <td class="td-sm">${orgs.filter(o => o.uid === u.id).length}</td>
+      <td><span class="role-badge ${u.role === 'admin' ? 'role-badge--admin' : 'role-badge--user'}">${u.role === 'admin' ? 'Admin' : 'Usuario'}</span></td>
     </tr>`).join('');
 };
 
@@ -841,3 +848,4 @@ window.deleteOrg = async function (id) {
     alert(friendlyError(e));
   }
 };
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
