@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Red de Vinculación Empresarial – FI-UNLZ</title>
+<meta name="description" content="Plataforma de vinculación entre graduados y empresas de la Facultad de Ingeniería de la UNLZ.">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<!-- ═══ AUTH ═══ -->
+<div id="auth-wrap" class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <svg width="32" height="40" viewBox="0 0 32 40" fill="none">
+        <polygon points="8,0 20,0 20,10 8,10" fill="#6B7CFF"/>
+        <polygon points="8,10 20,10 8,20" fill="#3B24C8"/>
+        <polygon points="8,10 20,10 20,20" fill="#9a8fec"/>
+        <polygon points="8,20 20,20 8,30" fill="#3B24C8"/>
+        <polygon points="8,20 20,20 20,30" fill="#9a8fec"/>
+        <polygon points="4,30 20,30 12,40" fill="#6B7CFF"/>
+        <polygon points="20,30 28,30 28,38 20,38" fill="#9a8fec"/>
+      </svg>
+      <div class="auth-logo-text">
+        <div class="t1">Facultad de</div>
+        <div class="t2">INGENIERÍA</div>
+        <div class="t3">Universidad Nacional de Lomas de Zamora</div>
+      </div>
+    </div>
+    <div class="auth-title">Red de Vinculación Empresarial</div>
+    <div class="auth-sub">Plataforma para graduados y empresas vinculadas a la FI-UNLZ.</div>
+    <div class="auth-tabs">
+      <div class="auth-tab active" onclick="authTab('login')">Iniciar sesión</div>
+      <div class="auth-tab" onclick="authTab('registro')">Registrarse</div>
+    </div>
+    <div class="auth-form active" id="af-login">
+      <label class="fl">Email</label>
+      <input class="fi" type="email" id="l-email" placeholder="tu@email.com" onkeydown="if(event.key==='Enter')doLogin()">
+      <label class="fl">Contraseña</label>
+      <input class="fi" type="password" id="l-pass" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
+      <button class="btn-main" id="l-btn" onclick="doLogin()">Ingresar</button>
+      <div class="auth-msg" id="l-msg"></div>
+    </div>
+    <div class="auth-form" id="af-registro">
+      <div class="hint">Creá tu cuenta como graduado/a de la FI-UNLZ.</div>
+      <div class="form-row-2">
+        <div><label class="fl">Nombre *</label><input class="fi" type="text" id="r-nombre" placeholder="Nombre"></div>
+        <div><label class="fl">Apellido *</label><input class="fi" type="text" id="r-apellido" placeholder="Apellido"></div>
+      </div>
+      <label class="fl">Email *</label>
+      <input class="fi" type="email" id="r-email" placeholder="tu@email.com">
+      <label class="fl">Teléfono móvil *</label>
+      <input class="fi" type="tel" id="r-tel" placeholder="+54 11 1234-5678">
+      <label class="fl">Contraseña * <span style="font-weight:300;color:var(--fi-gray)">(mín. 6 caracteres)</span></label>
+      <input class="fi" type="password" id="r-pass" placeholder="••••••••">
+      <label class="fl">Confirmar contraseña *</label>
+      <input class="fi" type="password" id="r-pass2" placeholder="••••••••" onkeydown="if(event.key==='Enter')doRegister()">
+      <button class="btn-main" id="r-btn" onclick="doRegister()">Crear cuenta</button>
+      <div class="auth-msg" id="r-msg"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MAIN APP ═══ -->
+<div id="main-app" class="main-app">
+  <div class="topbar">
+    <div class="brand">
+      <svg width="26" height="34" viewBox="0 0 32 40" fill="none">
+        <polygon points="8,0 20,0 20,10 8,10" fill="rgba(255,255,255,.5)"/>
+        <polygon points="8,10 20,10 8,20" fill="rgba(255,255,255,.9)"/>
+        <polygon points="8,10 20,10 20,20" fill="rgba(255,255,255,.35)"/>
+        <polygon points="8,20 20,20 8,30" fill="rgba(255,255,255,.9)"/>
+        <polygon points="8,20 20,20 20,30" fill="rgba(255,255,255,.35)"/>
+        <polygon points="4,30 20,30 12,40" fill="rgba(255,255,255,.65)"/>
+        <polygon points="20,30 28,30 28,38 20,38" fill="rgba(255,255,255,.5)"/>
+      </svg>
+      <div class="brand-text">
+        <div class="t1">Facultad de</div>
+        <div class="t2">INGENIERÍA · Red de Vinculación</div>
+        <div class="t3">Universidad Nacional de Lomas de Zamora</div>
+      </div>
+    </div>
+    <div class="tabs">
+      <button class="tab-btn active" onclick="showScreen('directorio')"><i class="ti ti-building"></i> Empresas</button>
+      <button class="tab-btn" onclick="showScreen('graduados')"><i class="ti ti-users"></i> Graduados</button>
+      <button class="tab-btn" onclick="showScreen('vinculacion')"><i class="ti ti-arrows-exchange"></i> Vinculación</button>
+      <button class="tab-btn" onclick="showScreen('mapa')"><i class="ti ti-map-2"></i> Mapa</button>
+      <button class="tab-btn" onclick="showScreen('mis-empresas')"><i class="ti ti-star"></i> Mis empresas</button>
+      <button class="tab-btn" onclick="showScreen('registrar')"><i class="ti ti-plus"></i> Agregar</button>
+      <button class="tab-btn admin-tab" id="admin-tab-btn" style="display:none" onclick="showScreen('admin')"><i class="ti ti-shield"></i> Admin</button>
+      <div class="user-pill">
+        <i class="ti ti-user" style="font-size:12px"></i>
+        <span id="user-name-pill">—</span>
+        <span class="admin-badge-pill" id="admin-badge" style="display:none">Admin</span>
+        <button onclick="doLogout()">Salir</button>
+      </div>
+    </div>
+  </div>
+  <div class="accent-bar"></div>
+  <div class="main">
+
+    <!-- DIRECTORIO EMPRESAS -->
+    <div class="screen active" id="screen-directorio">
+      <div class="stats-grid">
+        <div class="stat-card"><div class="stat-label">Organizaciones</div><div class="stat-value" id="stat-total">0</div></div>
+        <div class="stat-card"><div class="stat-label">Graduados registrados</div><div class="stat-value" id="stat-users">0</div></div>
+        <div class="stat-card"><div class="stat-label">Sectores</div><div class="stat-value" id="stat-sectores">0</div></div>
+        <div class="stat-card"><div class="stat-label">Vinculaciones posibles</div><div class="stat-value" id="stat-matches">0</div></div>
+      </div>
+      <div class="search-row">
+        <input type="text" id="search-input" placeholder="Buscar por nombre, graduado, CUIT, sector, ciudad o necesidad..." oninput="renderDir()">
+      </div>
+      <div class="filters">
+        <button class="chip active" onclick="setFilter(this,'todos')">Todos</button>
+        <button class="chip" onclick="setFilter(this,'Oil & Gas')">Oil &amp; Gas</button>
+        <button class="chip" onclick="setFilter(this,'Industrial')">Industrial</button>
+        <button class="chip" onclick="setFilter(this,'Consultoría')">Consultoría</button>
+        <button class="chip" onclick="setFilter(this,'has-need')">Con necesidades sin cubrir</button>
+      </div>
+      <div class="section-header">
+        <div class="section-title">Directorio de organizaciones</div>
+        <span class="count-pill" id="dir-count">0</span>
+      </div>
+      <div class="card-grid" id="org-grid"></div>
+    </div>
+
+    <!-- DIRECTORIO GRADUADOS -->
+    <div class="screen" id="screen-graduados">
+      <div class="search-row">
+        <input type="text" id="search-grad" placeholder="Buscar graduado por nombre, email o empresa..." oninput="renderGraduados()">
+      </div>
+      <div class="section-header">
+        <div class="section-title">Directorio de graduados</div>
+        <span class="count-pill" id="grad-count">0</span>
+      </div>
+      <div class="card-grid" id="grad-grid"></div>
+    </div>
+
+    <!-- VINCULACIÓN -->
+    <div class="screen" id="screen-vinculacion">
+      <div class="section-header">
+        <div class="section-title">Oportunidades de vinculación detectadas</div>
+        <span class="count-pill" id="vin-count">0</span>
+      </div>
+      <p style="font-size:12px;color:var(--fi-gray);margin-bottom:1.25rem;line-height:1.6;">Organizaciones cuyas <strong>necesidades sin cubrir</strong> coinciden con <strong>servicios o productos</strong> de otra organización de la red.</p>
+      <div class="vin-list" id="vin-list"></div>
+    </div>
+
+    <!-- MAPA -->
+    <div class="screen" id="screen-mapa">
+      <div class="section-header">
+        <div class="section-title">Mapa de organizaciones</div>
+        <span class="count-pill" id="map-count">0</span>
+      </div>
+      <div class="map-notice">
+        <i class="ti ti-info-circle" style="color:var(--fi-c2);margin-right:6px;"></i>
+        Las organizaciones aparecen en el mapa cuando tienen <strong>ciudad registrada</strong>. Hacé clic en un marcador para ver el nombre, logo y graduado.
+        El mapa usa OpenStreetMap y no requiere clave API.
+      </div>
+      <div id="gmap"></div>
+    </div>
+
+    <!-- MIS EMPRESAS -->
+    <div class="screen" id="screen-mis-empresas">
+      <div class="section-header">
+        <div class="section-title">Mis empresas registradas</div>
+        <span class="count-pill" id="mis-count">0</span>
+      </div>
+      <div class="card-grid" id="mis-grid"></div>
+    </div>
+
+    <!-- REGISTRAR / EDITAR -->
+    <div class="screen" id="screen-registrar">
+      <div class="form-wrap">
+        <div class="section-header" style="margin-bottom:1.5rem;">
+          <div class="section-title" id="form-screen-title">Agregar empresa u organización</div>
+        </div>
+        <input type="hidden" id="f-edit-id" value="">
+
+        <div class="form-group">
+          <label class="form-label">Tipo de organización</label>
+          <select class="form-select" id="f-tipo">
+            <option value="Empresa">Empresa</option>
+            <option value="Emprendedor/Egresado">Emprendedor / Egresado</option>
+            <option value="Facultad">Facultad / Área institucional</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">CUIT de la empresa *</label>
+          <input class="form-input" id="f-cuit" type="text" placeholder="Ej: 30-71234567-9" oninput="checkCuit()">
+          <div class="cuit-hint">El CUIT identifica unívocamente a cada empresa. No se puede registrar el mismo CUIT dos veces.</div>
+          <div class="cuit-check" id="cuit-check"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Nombre de la organización *</label>
+            <input class="form-input" id="f-nombre" type="text" placeholder="Ej: Tecmatik S.A.">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Sector / Industria</label>
+            <input class="form-input" id="f-sector" type="text" placeholder="Ej: Automatización industrial">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Logo de la empresa</label>
+          <input type="file" id="f-logo" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" onchange="previewLogo()" style="font-size:12px;width:100%;">
+          <div class="logo-preview-wrap">
+            <img id="logo-preview-img" class="logo-preview" alt="logo preview">
+            <button class="logo-clear" id="logo-clear-btn" style="display:none" onclick="clearLogo()">✕ Quitar logo</button>
+          </div>
+        </div>
+
+        <div class="form-section">Contacto de la organización</div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Email</label><input class="form-input" id="f-email-org" type="email" placeholder="contacto@empresa.com"></div>
+          <div class="form-group"><label class="form-label">Teléfono</label><input class="form-input" id="f-tel" type="text" placeholder="+54 11 1234-5678"></div>
+        </div>
+        <div class="form-group"><label class="form-label">Sitio web</label><input class="form-input" id="f-web" type="text" placeholder="https://www.empresa.com"></div>
+
+        <div class="form-section">Ubicación</div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Calle y número</label><input class="form-input" id="f-calle" type="text" placeholder="Ej: Av. Corrientes 1234"></div>
+          <div class="form-group"><label class="form-label">Localidad / Ciudad</label><input class="form-input" id="f-ciudad" type="text" placeholder="Ej: Lomas de Zamora"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Provincia / Estado</label><input class="form-input" id="f-provincia" type="text" placeholder="Ej: Buenos Aires"></div>
+          <div class="form-group"><label class="form-label">País</label><input class="form-input" id="f-pais" type="text" placeholder="Argentina"></div>
+        </div>
+
+        <div class="form-section">Referente graduado</div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Nombre del referente</label><input class="form-input" id="f-referente" type="text"></div>
+          <div class="form-group"><label class="form-label">Cargo</label><input class="form-input" id="f-cargo" type="text"></div>
+        </div>
+
+        <div class="form-section">Descripción y servicios</div>
+        <div class="form-group"><label class="form-label">Descripción general</label><textarea class="form-input form-textarea" id="f-desc" placeholder="Actividad principal, mercados, trayectoria..."></textarea></div>
+        <div class="form-group">
+          <label class="form-label">Servicios / Productos <span style="font-weight:300;color:var(--fi-gray)">(Enter para agregar cada uno)</span></label>
+          <div class="tag-iw" id="wrap-ofertas"><input type="text" id="input-ofertas" placeholder="Ej: Metrología industrial..." onkeydown="addTag(event,'ofertas')"></div>
+        </div>
+        <div class="form-section">Instalaciones disponibles</div>
+        <div class="form-group">
+          <label class="form-label">Equipamiento e instalaciones <span style="font-weight:300;color:var(--fi-gray)">(Enter para agregar cada uno)</span></label>
+          <div class="tag-iw" id="wrap-instalaciones"><input type="text" id="input-instalaciones" placeholder="Ej: Laboratorio, CNC..." onkeydown="addTag(event,'instalaciones')"></div>
+        </div>
+        <div class="form-section">Necesidades</div>
+        <div class="form-group">
+          <label class="form-label">Necesidades sin proveedor <span style="font-weight:300;color:var(--fi-gray)">(Enter para agregar cada una)</span></label>
+          <div class="tag-iw" id="wrap-needs-uncovered"><input type="text" id="input-needs-uncovered" placeholder="Ej: Análisis de fatiga de materiales..." onkeydown="addTag(event,'needs-uncovered')"></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Necesidades cubiertas con proveedores <span style="font-weight:300;color:var(--fi-gray)">(Enter para agregar cada una)</span></label>
+          <div class="tag-iw" id="wrap-needs-covered"><input type="text" id="input-needs-covered" placeholder="Ej: Mantenimiento eléctrico..." onkeydown="addTag(event,'needs-covered')"></div>
+        </div>
+
+        <div style="display:flex;gap:10px;margin-top:1.5rem;flex-wrap:wrap;">
+          <button class="btn-prim" id="form-submit-btn" onclick="guardarOrg()"><i class="ti ti-check"></i> <span id="form-btn-label">Registrar empresa</span></button>
+          <button class="btn-out" onclick="cancelEdit()">Cancelar / Limpiar</button>
+        </div>
+        <div class="form-msg" id="form-msg"></div>
+      </div>
+    </div>
+
+    <!-- ADMIN -->
+    <div class="screen" id="screen-admin">
+      <div class="admin-section-title"><i class="ti ti-building"></i> Gestión de empresas <span class="admin-badge">Admin</span></div>
+      <div style="overflow-x:auto;">
+        <table class="admin-table">
+          <thead><tr><th>Logo</th><th>Empresa</th><th>CUIT</th><th>Sector</th><th>Referente</th><th>Ubicación</th><th>Acciones</th></tr></thead>
+          <tbody id="admin-orgs-body"></tbody>
+        </table>
+      </div>
+      <div class="admin-section-title" style="margin-top:1rem;"><i class="ti ti-users"></i> Usuarios registrados <span class="admin-badge">Admin</span></div>
+      <div class="note-box">Por seguridad, borrar cuentas de usuario no está disponible desde el navegador (requeriría exponer una clave con privilegios totales). Si necesitás dar de baja a alguien, hacelo desde el panel de Supabase (Authentication → Users).</div>
+      <div style="overflow-x:auto;">
+        <table class="admin-table">
+          <thead><tr><th>Nombre</th><th>Email</th><th>Teléfono</th><th>Empresas</th><th>Rol</th></tr></thead>
+          <tbody id="admin-users-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+</div><!-- /main-app -->
+
+<!-- MODAL: DETALLE EMPRESA -->
+<div class="modal-overlay" id="modal-detalle">
+  <div class="modal">
+    <div class="modal-header"><h2 id="md-title"></h2><button class="modal-close" onclick="closeModal('modal-detalle')"><i class="ti ti-x"></i></button></div>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<!-- MODAL: EDITAR UBICACIÓN -->
+<div class="modal-overlay" id="modal-ubicacion">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2 id="modal-ub-title">Editar ubicación</h2>
+      <button class="modal-close" onclick="closeModal('modal-ubicacion')"><i class="ti ti-x"></i></button>
+    </div>
+    <p style="font-size:12px;color:var(--fi-gray);margin-bottom:1rem;line-height:1.5;">Modificá la dirección. Los cambios se guardan y se reflejan en el mapa.</p>
+    <input type="hidden" id="ub-id">
+    <div class="form-group"><label class="form-label">Calle y número</label><input class="form-input" id="ub-calle" type="text" placeholder="Ej: Av. Corrientes 1234"></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Localidad / Ciudad</label><input class="form-input" id="ub-ciudad" type="text"></div>
+      <div class="form-group"><label class="form-label">Provincia / Estado</label><input class="form-input" id="ub-provincia" type="text"></div>
+    </div>
+    <div class="form-group"><label class="form-label">País</label><input class="form-input" id="ub-pais" type="text"></div>
+    <div style="display:flex;gap:10px;margin-top:1rem;">
+      <button class="btn-prim" onclick="guardarUbicacion()"><i class="ti ti-map-pin"></i> Guardar</button>
+      <button class="btn-out" onclick="closeModal('modal-ubicacion')">Cancelar</button>
+    </div>
+    <div class="form-msg" id="ub-msg"></div>
+  </div>
+</div>
+
+<script type="module" src="assets/js/main.js"></script>
+</body>
+</html>
