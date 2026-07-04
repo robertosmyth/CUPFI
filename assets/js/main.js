@@ -2,7 +2,6 @@
 // CUPFI · Red de Vinculación Empresarial FI-UNLZ
 // App principal: conecta la UI con Supabase (auth real + datos reales)
 // ══════════════════════════════════════════════
-import { supabase } from './supabaseClient.js';
 import * as Auth from './auth.js';
 import * as Empresas from './empresas.js';
 import { allMatches, findMatchesFor, countMatches } from './matching.js';
@@ -29,10 +28,20 @@ let leafletReady = false;
 // ══════════════════════════════════════════════
 // ARRANQUE
 // ══════════════════════════════════════════════
-document.addEventListener('DOMContentLoaded', init);
+document.addEventListener('DOMContentLoaded', () => {
+  // wireStaticEvents() y authTab/doLogin/doRegister ya quedaron disponibles
+  // (se definen más abajo, de forma síncrona, sin depender de red). Si algo
+  // falla al conectar con Supabase (CDN externo, sin internet, etc.), solo
+  // se avisa acá arriba del formulario de login; el resto de la pantalla
+  // de acceso sigue funcionando igual.
+  wireStaticEvents();
+  init().catch(e => {
+    console.error('Error inicializando la app:', e);
+    showAuthMsg('l-msg', friendlyError(e), 'err');
+  });
+});
 
 async function init() {
-  wireStaticEvents();
   const session = await Auth.getSession();
   if (session) {
     await enterApp();
@@ -46,7 +55,7 @@ async function init() {
       currentProfile = null;
       showAuthScreen();
     }
-  });
+  }).catch(e => console.error('No se pudo suscribir a cambios de sesión:', e));
 }
 
 function wireStaticEvents() {

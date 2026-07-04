@@ -2,7 +2,7 @@
 // CRUD de empresas + subida de logos (Supabase real)
 // Mapea entre camelCase (JS) y snake_case (columnas Postgres)
 // ══════════════════════════════════════════════
-import { supabase } from './supabaseClient.js';
+import { getSupabase } from './supabaseClient.js';
 
 function fromDb(row) {
   return {
@@ -55,24 +55,28 @@ function toDb(o) {
 }
 
 export async function listEmpresas() {
+  const supabase = await getSupabase();
   const { data, error } = await supabase.from('empresas').select('*').order('created_at', { ascending: false });
   if (error) throw error;
   return data.map(fromDb);
 }
 
 export async function createEmpresa(uid, payload) {
+  const supabase = await getSupabase();
   const { data, error } = await supabase.from('empresas').insert({ uid, ...toDb(payload) }).select().single();
   if (error) throw error;
   return fromDb(data);
 }
 
 export async function updateEmpresa(id, payload) {
+  const supabase = await getSupabase();
   const { data, error } = await supabase.from('empresas').update(toDb(payload)).eq('id', id).select().single();
   if (error) throw error;
   return fromDb(data);
 }
 
 export async function deleteEmpresa(id) {
+  const supabase = await getSupabase();
   const { error } = await supabase.from('empresas').delete().eq('id', id);
   if (error) throw error;
 }
@@ -93,6 +97,7 @@ export function validateLogoFile(file) {
 // y devuelve la URL pública para guardar en empresas.logo
 export async function uploadLogo(file, uid) {
   validateLogoFile(file);
+  const supabase = await getSupabase();
   const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
   const path = `${uid}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
   const { error } = await supabase.storage.from('logos').upload(path, file, { upsert: false, contentType: file.type });
