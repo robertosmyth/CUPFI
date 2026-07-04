@@ -53,6 +53,11 @@ CUPFI/
   especiales antes de insertarse en la página, para evitar XSS.
 - Los logos se validan en tamaño (máx. 800 KB) y tipo de archivo (imágenes
   únicamente) antes de subirse.
+- Nadie puede auto-promoverse a admin ni "transferir" una empresa: dos
+  triggers en la base de datos (`sql/003_lockdown_role_and_uid.sql`) ignoran
+  cualquier intento de cambiar `profiles.role` o `empresas.uid` desde el
+  cliente, sin importar quién sea el dueño de la fila. Cambiar el rol de un
+  usuario solo se puede hacer desde el dashboard de Supabase.
 
 ## Configuración inicial en Supabase (una sola vez)
 
@@ -68,8 +73,11 @@ completa falta correr una migración chica:
      graduado en el directorio, ya que `auth.users` no es accesible
      directamente desde el cliente),
    - el bucket público de Storage `logos` con sus políticas de acceso.
-3. Registrate normalmente desde la app (pestaña "Registrarse").
-4. Para convertirte en administrador, en el **Table Editor** de Supabase
+3. Pegá y ejecutá también [`sql/003_lockdown_role_and_uid.sql`](sql/003_lockdown_role_and_uid.sql),
+   que impide que un usuario se auto-promueva a admin o "robe" una empresa
+   cambiando su dueño desde el cliente (ver sección de seguridad arriba).
+4. Registrate normalmente desde la app (pestaña "Registrarse").
+5. Para convertirte en administrador, en el **Table Editor** de Supabase
    abrí la tabla `profiles` y cambiá tu fila: `role = admin`. O corré en el
    SQL Editor:
    ```sql
@@ -86,6 +94,24 @@ Por defecto Supabase Auth pide confirmar el email antes de poder iniciar
 sesión. Podés dejarlo así (más seguro) o desactivarlo en
 **Authentication → Providers → Email → Confirm email** si preferís que el
 alta sea inmediata. La app ya contempla ambos casos.
+
+El correo de confirmación lo envía el propio Supabase (no hace falta, ni
+conviene, armar un servidor de mails aparte solo para esto). Lo que sí hay
+que configurar es a dónde te lleva el link una vez confirmado:
+**Authentication → URL Configuration**:
+- **Site URL**: `https://<tu-usuario>.github.io/<tu-repo>/` (por ejemplo
+  `https://robertosmyth.github.io/CUPFI/`). Si queda con el valor por
+  defecto (`http://localhost:3000` o similar), el link del mail te va a
+  llevar a una página que no existe — el mail y la confirmación en sí
+  funcionan igual, solo cambia la redirección final.
+- **Redirect URLs**: agregá esa misma URL a la lista permitida.
+
+Si más adelante querés usar tu propio dominio o servicio de email (por
+ejemplo para que los mails salgan desde una dirección propia en vez de la
+genérica de Supabase), se configura en **Authentication → Settings → SMTP
+Settings** con un proveedor externo (Resend, Postmark, SendGrid, etc.). Es
+opcional: no afecta la seguridad ni el funcionamiento, solo la marca/remitente
+del mail.
 
 ## Publicar el sitio (GitHub Pages)
 

@@ -143,5 +143,35 @@ create policy "Usuarios autenticados borran sus logos"
   to authenticated
   using (bucket_id = 'logos' and owner = auth.uid());
 
+-- SEGURIDAD: nadie puede auto-promoverse a admin ni "transferir" una
+-- empresa cambiando su dueño desde el cliente (ver sql/003_lockdown_role_and_uid.sql)
+create or replace function public.prevent_role_change()
+returns trigger as $$
+begin
+  if NEW.role is distinct from OLD.role then
+    NEW.role := OLD.role;
+  end if;
+  return NEW;
+end;
+$$ language plpgsql security definer set search_path = public;
+
+drop trigger if exists prevent_role_change_trigger on public.profiles;
+create trigger prevent_role_change_trigger
+  before update on public.profiles
+  for each row execute procedure public.prevent_role_change();
+
+create or replace function public.prevent_empresa_uid_change()
+returns trigger as $$
+begin
+  NEW.uid := OLD.uid;
+  return NEW;
+end;
+$$ language plpgsql security definer set search_path = public;
+
+drop trigger if exists prevent_empresa_uid_change_trigger on public.empresas;
+create trigger prevent_empresa_uid_change_trigger
+  before update on public.empresas
+  for each row execute procedure public.prevent_empresa_uid_change();
+
 -- ADMIN por defecto: se asigna manualmente desde el dashboard con:
 -- update public.profiles set role = 'admin' where email = 'tu-email@fi.unlz.edu.ar';
