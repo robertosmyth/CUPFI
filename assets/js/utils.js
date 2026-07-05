@@ -23,6 +23,14 @@ export function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
 }
 
+// Valida que una URL de sitio web tenga un esquema seguro (http/https).
+// Se usa antes de guardar el campo "web" de una empresa para evitar
+// esquemas como "javascript:" en un link que después se renderiza en <a href>.
+export function isValidUrl(url) {
+  if (!url) return true; // campo opcional
+  return /^https?:\/\/.+/i.test(String(url).trim());
+}
+
 export function buildAddress(o) {
   return [o.calle, o.ciudad, o.provincia, o.pais].filter(Boolean).join(', ');
 }
@@ -33,6 +41,13 @@ export function norm(s) {
     .replace(/[áàä]/g, 'a').replace(/[éèë]/g, 'e')
     .replace(/[íìï]/g, 'i').replace(/[óòö]/g, 'o')
     .replace(/[úùü]/g, 'u').replace(/[^a-z0-9 ]/g, ' ');
+}
+
+// Clave normalizada de un tag/etiqueta (oferta, necesidad, instalación),
+// usada tanto para evitar tags duplicados por mayúsculas/espacios como
+// para detectar coincidencias exactas en el motor de vinculación.
+export function normalizeTagKey(s) {
+  return norm(s).replace(/\s+/g, ' ').trim();
 }
 
 export function overlap(a, b) {

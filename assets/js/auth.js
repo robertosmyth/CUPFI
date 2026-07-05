@@ -33,9 +33,12 @@ export async function getSession() {
   return data.session;
 }
 
+// El callback recibe (event, session). El evento 'PASSWORD_RECOVERY' es el
+// que dispara Supabase cuando el usuario vuelve del link de "restablecer
+// contraseña" que le llega por email.
 export async function onAuthStateChange(cb) {
   const supabase = await getSupabase();
-  return supabase.auth.onAuthStateChange((_event, session) => cb(session));
+  return supabase.auth.onAuthStateChange((event, session) => cb(event, session));
 }
 
 // Perfil (public.profiles) del usuario autenticado, con su email real
@@ -67,4 +70,38 @@ export async function setUserRole(userId, role) {
   if (error) throw error;
   if (!data) throw new Error('No se pudo cambiar el rol (¿ya no sos admin, o el usuario no existe?).');
   return data;
+}
+
+// Actualiza los datos propios del perfil (nombre, apellido, teléfono).
+// Permitido por RLS porque auth.uid() = id (ver sql/001_schema.sql).
+export async function updateOwnProfile({ nombre, apellido, tel }) {
+  const supabase = await getSupabase();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('No hay sesión activa.');
+  const { data, error } = await supabase
+    .from('profiles')
+    .update({ nombre, apellido, tel })
+    .eq('id', user.id)
+    .select()
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+// Envía el email de "restablecer contraseña". redirectTo apunta a la misma
+// página (Site URL configurado en Supabase); al volver, Supabase dispara
+// el evento 'PASSWORD_RECOVERY' que main.js escucha para mostrar el
+// formulario de nueva contraseña.
+export async function resetPasswordForEmail(email) {
+  const supabase = await getSupabase();
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin + window.location.pathname,
+  });
+  if (error) throw error;
+}
+
+export async function updatePassword(newPassword) {
+  const supabase = await getSupabase();
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) throw error;
 }

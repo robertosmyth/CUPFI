@@ -4,8 +4,8 @@
 // ══════════════════════════════════════════════
 import * as Auth from './auth.js';
 import * as Empresas from './empresas.js';
-import { allMatches, findMatchesFor, countMatches } from './matching.js';
-import { esc, ini, normCuit, isValidCuit, isValidEmail, buildAddress, friendlyError } from './utils.js';
+import { allMatches, findMatchesFor, countMatches, groupMatchesByPair } from './matching.js';
+import { esc, ini, normCuit, isValidCuit, isValidEmail, isValidUrl, buildAddress, friendlyError, normalizeTagKey } from './utils.js';
 
 // ══════════════════════════════════════════════
 // ESTADO GLOBAL (en memoria; los datos reales viven en Supabase)
@@ -24,6 +24,39 @@ let currentLogoUrl = null;  // URL ya existente (modo edición) o recién subida
 let leafletMap = null;
 let mapMarkers = [];
 let leafletReady = false;
+
+// Categorías sugeridas para servicios/productos y necesidades: compartir
+// el mismo vocabulario entre "ofertas" y "necesidades" es lo que permite
+// que el motor de vinculación (matching.js) encuentre coincidencias
+// exactas y confiables, además de las aproximadas por palabras.
+const CATEGORIAS_SERVICIOS = [
+  'Mecanizado de piezas', 'Diseño eléctrico', 'Diseño mecánico', 'Ensayos de materiales',
+  'Mantenimiento industrial', 'Logística y transporte', 'Consultoría técnica',
+  'Automatización industrial', 'Soldadura', 'Metrología', 'Inyección de plásticos',
+  'Tratamientos superficiales', 'Control de calidad', 'Ingeniería de procesos',
+  'Instalaciones eléctricas', 'Climatización (HVAC)', 'Software a medida',
+  'Capacitación técnica', 'Importación / Exportación', 'Insumos industriales',
+  'Seguridad e higiene', 'Auditoría técnica', 'Impresión 3D / prototipado',
+  'Energías renovables', 'Construcción y obra civil', 'Recursos humanos técnicos',
+  'Marketing y ventas B2B', 'Legal y contable',
+];
+const CATEGORIAS_INSTALACIONES = [
+  'Planta de producción', 'Laboratorio de ensayos', 'Depósito / almacenamiento',
+  'Taller de mecanizado CNC', 'Sala limpia', 'Playa de maniobras', 'Oficinas técnicas',
+  'Equipos de diagnóstico', 'Flota de vehículos', 'Sala de capacitación',
+];
+const SECTORES = [
+  'Oil & Gas', 'Industrial', 'Consultoría', 'Automotriz', 'Metalmecánica',
+  'Electrotecnia', 'Construcción', 'Alimenticia', 'Química', 'Textil / Calzado',
+  'Minería', 'Energía', 'Software / TI', 'Logística', 'Agroindustria',
+  'Salud', 'Educación', 'Ferroviario', 'Naval / Portuario', 'Institucional',
+];
+const QUICK_TAG_SOURCES = {
+  ofertas: CATEGORIAS_SERVICIOS,
+  instalaciones: CATEGORIAS_INSTALACIONES,
+  'needs-uncovered': CATEGORIAS_SERVICIOS,
+  'needs-covered': CATEGORIAS_SERVICIOS,
+};
 
 // ══════════════════════════════════════════════
 // ARRANQUE
@@ -48,7 +81,16 @@ async function init() {
   } else {
     showAuthScreen();
   }
-  Auth.onAuthStateChange(async (session) => {
+  Auth.onAuthStateChange(async (event, session) => {
+    if (event === 'PASSWORD_RECOVERY') {
+      // El usuario volvió del link de "restablecer contraseña" del email.
+      document.getElementById('auth-wrap').style.display = 'flex';
+      document.getElementById('main-app').style.display = 'none';
+      document.querySelectorAll('.auth-tab').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
+      document.getElementById('af-reset').classList.add('active');
+      return;
+    }
     if (session && !currentProfile) {
       await enterApp();
     } else if (!session && currentProfile) {
@@ -65,6 +107,29 @@ function wireStaticEvents() {
   document.getElementById('modal-ubicacion').addEventListener('click', function (e) {
     if (e.target === this) closeModal('modal-ubicacion');
   });
+  document.getElementById('modal-perfil').addEventListener('click', function (e) {
+    if (e.target === this) closeModal('modal-perfil');
+  });
+  renderQuickTagButtons();
+  renderSectorDatalist();
+}
+
+function renderQuickTagButtons() {
+  const mk = (containerId, list, type) => {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    el.innerHTML = list.map((c, i) => `<button type="button" class="quick-tag-btn" onclick="quickAddTag('${type}',${i})">+ ${esc(c)}</button>`).join('');
+  };
+  mk('quick-ofertas', CATEGORIAS_SERVICIOS, 'ofertas');
+  mk('quick-instalaciones', CATEGORIAS_INSTALACIONES, 'instalaciones');
+  mk('quick-needs-uncovered', CATEGORIAS_SERVICIOS, 'needs-uncovered');
+  mk('quick-needs-covered', CATEGORIAS_SERVICIOS, 'needs-covered');
+}
+
+function renderSectorDatalist() {
+  const dl = document.getElementById('sectores-list');
+  if (!dl) return;
+  dl.innerHTML = SECTORES.map(s => `<option value="${esc(s)}">`).join('');
 }
 
 // ══════════════════════════════════════════════
@@ -125,6 +190,43 @@ window.doLogout = async function () {
   await Auth.signOut();
   currentProfile = null;
   showAuthScreen();
+};
+
+window.openForgotPassword = function () {
+  document.querySelectorAll('.auth-tab').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
+  document.getElementById('af-forgot').classList.add('active');
+};
+
+window.doForgotPassword = async function () {
+  const email = document.getElementById('fp-email').value.trim().toLowerCase();
+  if (!email || !isValidEmail(email)) { showAuthMsg('fp-msg', 'Ingresá un email válido.', 'err'); return; }
+  setBusy('fp-btn', true);
+  try {
+    await Auth.resetPasswordForEmail(email);
+    showAuthMsg('fp-msg', '✓ Si ese email tiene una cuenta, te enviamos un link para restablecer la contraseña.', 'ok');
+  } catch (e) {
+    showAuthMsg('fp-msg', friendlyError(e), 'err');
+  } finally {
+    setBusy('fp-btn', false);
+  }
+};
+
+window.doResetPassword = async function () {
+  const p1 = document.getElementById('rp-pass').value;
+  const p2 = document.getElementById('rp-pass2').value;
+  if (!p1 || p1.length < 6) { showAuthMsg('rp-msg', 'La contraseña debe tener al menos 6 caracteres.', 'err'); return; }
+  if (p1 !== p2) { showAuthMsg('rp-msg', 'Las contraseñas no coinciden.', 'err'); return; }
+  setBusy('rp-btn', true);
+  try {
+    await Auth.updatePassword(p1);
+    showAuthMsg('rp-msg', '✓ Contraseña actualizada. Ya podés ingresar con ella.', 'ok');
+    setTimeout(() => { enterApp().catch(e => showAuthMsg('l-msg', friendlyError(e), 'err')); }, 1200);
+  } catch (e) {
+    showAuthMsg('rp-msg', friendlyError(e), 'err');
+  } finally {
+    setBusy('rp-btn', false);
+  }
 };
 
 function setBusy(btnId, busy) {
@@ -191,6 +293,22 @@ function logoOrAvatar(o, size = 42) {
   return `<div class="avatar ${sc}">${esc(ini(o.nombre))}</div>`;
 }
 
+// Botón(es) de contacto directo para una organización: email y/o teléfono.
+// Se usa tanto en la lista de Vinculación como en el detalle de empresa,
+// para que contactar a la otra empresa sea un solo click.
+function contactButtonsHtml(org) {
+  const parts = [];
+  if (org.emailOrg) {
+    parts.push(`<a class="btn-contact" href="mailto:${esc(org.emailOrg)}"><i class="ti ti-mail"></i> Contactar por email</a>`);
+  }
+  if (org.tel) {
+    const telHref = org.tel.replace(/[^0-9+]/g, '');
+    parts.push(`<a class="btn-contact" href="tel:${esc(telHref)}"><i class="ti ti-phone"></i> Llamar</a>`);
+  }
+  if (!parts.length) return '<span class="muted-sm">Esta organización no cargó datos de contacto.</span>';
+  return parts.join(' ');
+}
+
 // ══════════════════════════════════════════════
 // NAVEGACIÓN
 // ══════════════════════════════════════════════
@@ -253,24 +371,27 @@ window.renderDir = function () {
     grid.innerHTML = '<div class="empty empty--full"><i class="ti ti-building-off"></i>Sin resultados para ese criterio.</div>';
     return;
   }
-  grid.innerHTML = filtered.map(o => {
-    const mine = currentProfile && o.uid === currentProfile.id;
-    const loc = [o.ciudad, o.provincia].filter(Boolean).join(', ');
-    return `<div class="org-card${mine ? ' mine' : ''}" onclick="openDetail(${o.id})">
-      ${mine ? '<div class="mine-badge"><i class="ti ti-star"></i>Mi empresa</div>' : ''}
-      <div class="card-head">${logoOrAvatar(o)}
-        <div><div class="card-org-name">${esc(o.nombre)}</div><div class="card-ref">${esc(o.referente)} · ${esc(o.cargo)}</div></div>
-      </div>
-      <div class="card-sector"><i class="ti ti-tag"></i>${esc(o.sector)}</div>
-      <div class="card-meta"><i class="ti ti-id"></i>CUIT: ${esc(o.cuit)}</div>
-      ${loc ? `<div class="card-meta"><i class="ti ti-map-pin"></i>${esc(loc)}</div>` : ''}
-      <div class="tags">
-        ${(o.ofertas || []).slice(0, 2).map(t => `<span class="tag tag-offer">${esc(t)}</span>`).join('')}
-        ${(o.needsUncovered || []).slice(0, 1).map(t => `<span class="tag tag-need">${esc(t)}</span>`).join('')}
-      </div>
-    </div>`;
-  }).join('');
+  grid.innerHTML = filtered.map(o => renderOrgCard(o)).join('');
 };
+
+// Tarjeta de organización, compartida entre el Directorio y "Mis empresas".
+function renderOrgCard(o) {
+  const mine = currentProfile && o.uid === currentProfile.id;
+  const loc = [o.ciudad, o.provincia].filter(Boolean).join(', ');
+  return `<div class="org-card${mine ? ' mine' : ''}" onclick="openDetail(${o.id})">
+    ${mine ? '<div class="mine-badge"><i class="ti ti-star"></i>Mi empresa</div>' : ''}
+    <div class="card-head">${logoOrAvatar(o)}
+      <div><div class="card-org-name">${esc(o.nombre)}</div><div class="card-ref">${esc(o.referente)} · ${esc(o.cargo)}</div></div>
+    </div>
+    <div class="card-sector"><i class="ti ti-tag"></i>${esc(o.sector)}</div>
+    <div class="card-meta"><i class="ti ti-id"></i>CUIT: ${esc(o.cuit)}</div>
+    ${loc ? `<div class="card-meta"><i class="ti ti-map-pin"></i>${esc(loc)}</div>` : ''}
+    <div class="tags">
+      ${(o.ofertas || []).slice(0, 2).map(t => `<span class="tag tag-offer">${esc(t)}</span>`).join('')}
+      ${(o.needsUncovered || []).slice(0, 1).map(t => `<span class="tag tag-need">${esc(t)}</span>`).join('')}
+    </div>
+  </div>`;
+}
 
 // ══════════════════════════════════════════════
 // DIRECTORIO GRADUADOS
@@ -434,20 +555,7 @@ window.renderMias = function () {
     </div>`;
     return;
   }
-  grid.innerHTML = mine.map(o => `
-    <div class="org-card mine" onclick="openDetail(${o.id})">
-      <div class="mine-badge"><i class="ti ti-star"></i>Mi empresa</div>
-      <div class="card-head">${logoOrAvatar(o)}
-        <div><div class="card-org-name">${esc(o.nombre)}</div><div class="card-ref">${esc(o.referente)} · ${esc(o.cargo)}</div></div>
-      </div>
-      <div class="card-sector">${esc(o.sector)}</div>
-      <div class="card-meta">CUIT: ${esc(o.cuit)}</div>
-      ${o.ciudad ? `<div class="card-meta"><i class="ti ti-map-pin"></i>${esc(o.ciudad)}</div>` : ''}
-      <div class="tags">
-        ${(o.ofertas || []).slice(0, 2).map(t => `<span class="tag tag-offer">${esc(t)}</span>`).join('')}
-        ${(o.needsUncovered || []).slice(0, 1).map(t => `<span class="tag tag-need">${esc(t)}</span>`).join('')}
-      </div>
-    </div>`).join('');
+  grid.innerHTML = mine.map(o => renderOrgCard(o)).join('');
 };
 
 // ══════════════════════════════════════════════
@@ -482,6 +590,7 @@ window.openDetail = function (id) {
       ${o.emailOrg ? `<div class="drow"><i class="ti ti-mail"></i>${esc(o.emailOrg)}</div>` : ''}
       ${o.tel ? `<div class="drow"><i class="ti ti-phone"></i>${esc(o.tel)}</div>` : ''}
       ${o.web ? `<div class="drow"><i class="ti ti-world"></i><a href="${esc(o.web)}" target="_blank" rel="noopener noreferrer" class="link-plain">${esc(o.web)}</a></div>` : ''}
+      <div class="detail-contact-actions">${contactButtonsHtml(o)}</div>
     </div>` : ''}
 
     ${addr ? `<div class="dsec"><div class="dsec-title">Ubicación</div>
@@ -497,11 +606,12 @@ window.openDetail = function (id) {
     ${(o.needsCovered || []).length ? `<div class="dsec"><div class="dsec-title">Necesidades cubiertas con proveedores</div><div class="tags">${o.needsCovered.map(t => `<span class="tag tag-cov">${esc(t)}</span>`).join('')}</div></div>` : ''}
 
     ${mx.length ? `<div class="dsec"><div class="dsec-title">Vinculaciones posibles</div>
-      ${mx.map(m => `<div class="match-card" onclick="closeModal('modal-detalle');setTimeout(()=>openDetail(${m.org.id}),80)">
-        <div class="match-label"><i class="ti ti-arrows-exchange"></i>puede cubrir su necesidad</div>
-        <div class="match-name">${esc(m.org.nombre)}</div>
+      ${mx.map(m => `<div class="match-card">
+        <div class="match-label"><i class="ti ti-arrows-exchange"></i>puede cubrir su necesidad ${m.strength === 'strong' ? '<span class="match-strength match-strength--strong">Coincidencia exacta</span>' : '<span class="match-strength match-strength--weak">Posible coincidencia</span>'}</div>
+        <div class="match-name" onclick="closeModal('modal-detalle');setTimeout(()=>openDetail(${m.org.id}),80)">${esc(m.org.nombre)}</div>
         <div class="muted-sm">${esc(m.org.referente)}</div>
         <div class="match-detail">${esc(m.need)} → <span class="match-highlight">${esc(m.offer)}</span></div>
+        <div class="match-contact">${contactButtonsHtml(m.org)}</div>
       </div>`).join('')}
     </div>` : ''}
 
@@ -514,6 +624,46 @@ window.openDetail = function (id) {
 
 window.closeModal = function (id) {
   document.getElementById(id).classList.remove('open');
+};
+
+// ══════════════════════════════════════════════
+// PERFIL PROPIO
+// ══════════════════════════════════════════════
+window.openEditProfile = function () {
+  if (!currentProfile) return;
+  document.getElementById('pf-nombre').value = currentProfile.nombre || '';
+  document.getElementById('pf-apellido').value = currentProfile.apellido || '';
+  document.getElementById('pf-tel').value = currentProfile.tel || '';
+  document.getElementById('pf-msg').style.display = 'none';
+  document.getElementById('modal-perfil').classList.add('open');
+};
+
+window.guardarPerfil = async function () {
+  const nombre = document.getElementById('pf-nombre').value.trim();
+  const apellido = document.getElementById('pf-apellido').value.trim();
+  const tel = document.getElementById('pf-tel').value.trim();
+  const msg = document.getElementById('pf-msg');
+  if (!nombre || !apellido) {
+    msg.textContent = 'Nombre y apellido son obligatorios.';
+    msg.className = 'form-msg err';
+    msg.style.display = 'block';
+    return;
+  }
+  try {
+    const updated = await Auth.updateOwnProfile({ nombre, apellido, tel });
+    currentProfile = { ...currentProfile, ...updated };
+    document.getElementById('user-name-pill').textContent = currentProfile.nombre || currentProfile.email;
+    await refreshData();
+    renderGraduados();
+    msg.textContent = '✓ Perfil actualizado.';
+    msg.className = 'form-msg ok';
+    msg.style.display = 'block';
+    setTimeout(() => closeModal('modal-perfil'), 900);
+  } catch (e) {
+    msg.textContent = friendlyError(e);
+    msg.className = 'form-msg err';
+    msg.style.display = 'block';
+  }
 };
 
 // ══════════════════════════════════════════════
@@ -645,10 +795,12 @@ window.guardarOrg = async function () {
 
   const nombre = document.getElementById('f-nombre').value.trim();
   const cuitRaw = document.getElementById('f-cuit').value.trim();
+  const webRaw = document.getElementById('f-web').value.trim();
 
   if (!nombre) { showFormMsg('El nombre de la organización es obligatorio.', 'err'); return; }
   if (!cuitRaw) { showFormMsg('El CUIT es obligatorio.', 'err'); return; }
   if (!isValidCuit(cuitRaw)) { showFormMsg('El CUIT debe tener 11 dígitos.', 'err'); return; }
+  if (webRaw && !isValidUrl(webRaw)) { showFormMsg('El sitio web debe empezar con http:// o https://', 'err'); return; }
 
   const editId = document.getElementById('f-edit-id').value;
   const digits = normCuit(cuitRaw);
@@ -678,7 +830,7 @@ window.guardarOrg = async function () {
       cargo: document.getElementById('f-cargo').value.trim(),
       emailOrg: document.getElementById('f-email-org').value.trim(),
       tel: document.getElementById('f-tel').value.trim(),
-      web: document.getElementById('f-web').value.trim(),
+      web: webRaw,
       desc: document.getElementById('f-desc').value.trim(),
       logo: logoUrl || null,
       ofertas: [...tags.ofertas],
@@ -760,43 +912,64 @@ window.guardarUbicacion = async function () {
 // VINCULACIÓN
 // ══════════════════════════════════════════════
 window.renderVin = function () {
-  const ms = allMatches(orgs);
-  document.getElementById('vin-count').textContent = ms.length;
+  const grouped = groupMatchesByPair(allMatches(orgs));
+  document.getElementById('vin-count').textContent = grouped.length;
   const list = document.getElementById('vin-list');
-  if (!ms.length) {
+  if (!grouped.length) {
     list.innerHTML = '<div class="empty"><i class="ti ti-arrows-exchange"></i>No se detectaron vinculaciones aún.<br>Registrá organizaciones con servicios y necesidades para que el sistema las cruce.</div>';
     return;
   }
-  list.innerHTML = ms.map(m => `
-    <div class="vin-row"><div class="vc">
-      <div>
-        <div class="vc-label">necesita</div>
-        <div class="vc-name" onclick="openDetail(${m.seeker.id})">${esc(m.seeker.nombre)}</div>
-        <div class="vc-ref">${esc(m.seeker.referente)}</div>
-        <span class="tag tag-need tag-block">${esc(m.need)}</span>
+  list.innerHTML = grouped.map(g => `
+    <div class="vin-row">
+      <div class="vc">
+        <div>
+          <div class="vc-label">necesita</div>
+          <div class="vc-name" onclick="openDetail(${g.seeker.id})">${esc(g.seeker.nombre)}</div>
+          <div class="vc-ref">${esc(g.seeker.referente)}</div>
+        </div>
+        <div class="vc-arrow"><i class="ti ti-arrow-right"></i></div>
+        <div>
+          <div class="vc-label">puede proveer</div>
+          <div class="vc-name" onclick="openDetail(${g.provider.id})">${esc(g.provider.nombre)}</div>
+          <div class="vc-ref">${esc(g.provider.referente)}</div>
+        </div>
       </div>
-      <div class="vc-arrow"><i class="ti ti-arrow-right"></i></div>
-      <div>
-        <div class="vc-label">puede proveer</div>
-        <div class="vc-name" onclick="openDetail(${m.provider.id})">${esc(m.provider.nombre)}</div>
-        <div class="vc-ref">${esc(m.provider.referente)}</div>
-        <span class="tag tag-offer tag-block">${esc(m.offer)}</span>
+      <div class="vin-items">
+        ${g.items.map(it => `<div class="vin-item">
+          <span class="tag tag-need">${esc(it.need)}</span>
+          <i class="ti ti-arrow-right icon-sm"></i>
+          <span class="tag tag-offer">${esc(it.offer)}</span>
+          ${it.strength === 'strong' ? '<span class="match-strength match-strength--strong">Coincidencia exacta</span>' : '<span class="match-strength match-strength--weak">Posible coincidencia</span>'}
+        </div>`).join('')}
       </div>
-    </div></div>`).join('');
+      <div class="vin-contact">${contactButtonsHtml(g.provider)}</div>
+    </div>`).join('');
 };
 
 // ══════════════════════════════════════════════
 // TAGS
 // ══════════════════════════════════════════════
+function addTagValue(type, rawVal) {
+  const val = String(rawVal || '').trim().replace(/\s+/g, ' ');
+  if (!val) return;
+  const key = normalizeTagKey(val);
+  if (tags[type].some(t => normalizeTagKey(t) === key)) return; // evita duplicados por mayúsculas/espacios
+  tags[type].push(val);
+  renderTags(type);
+}
+
 window.addTag = function (event, type) {
   if (event.key !== 'Enter') return;
   event.preventDefault();
   const inp = document.getElementById('input-' + type);
-  const val = inp.value.trim();
-  if (!val) return;
-  tags[type].push(val);
+  addTagValue(type, inp.value);
   inp.value = '';
-  renderTags(type);
+};
+
+window.quickAddTag = function (type, idx) {
+  const list = QUICK_TAG_SOURCES[type];
+  if (!list) return;
+  addTagValue(type, list[idx]);
 };
 
 window.removeTag = function (type, idx) {

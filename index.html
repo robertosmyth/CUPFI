@@ -43,6 +43,7 @@
       <input class="fi" type="password" id="l-pass" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
       <button class="btn-main" id="l-btn" onclick="doLogin()">Ingresar</button>
       <div class="auth-msg" id="l-msg"></div>
+      <div class="auth-links"><a href="#" onclick="event.preventDefault();openForgotPassword()">¿Olvidaste tu contraseña?</a></div>
     </div>
     <div class="auth-form" id="af-registro">
       <div class="hint">Creá tu cuenta como graduado/a de la FI-UNLZ.</div>
@@ -60,6 +61,23 @@
       <input class="fi" type="password" id="r-pass2" placeholder="••••••••" onkeydown="if(event.key==='Enter')doRegister()">
       <button class="btn-main" id="r-btn" onclick="doRegister()">Crear cuenta</button>
       <div class="auth-msg" id="r-msg"></div>
+    </div>
+    <div class="auth-form" id="af-forgot">
+      <div class="hint">Ingresá tu email y te mandamos un link para restablecer tu contraseña.</div>
+      <label class="fl">Email</label>
+      <input class="fi" type="email" id="fp-email" placeholder="tu@email.com" onkeydown="if(event.key==='Enter')doForgotPassword()">
+      <button class="btn-main" id="fp-btn" onclick="doForgotPassword()">Enviar link</button>
+      <div class="auth-msg" id="fp-msg"></div>
+      <div class="auth-links"><a href="#" onclick="event.preventDefault();authTab('login')">Volver a iniciar sesión</a></div>
+    </div>
+    <div class="auth-form" id="af-reset">
+      <div class="hint">Ingresá tu nueva contraseña.</div>
+      <label class="fl">Nueva contraseña <span class="label-note">(mín. 6 caracteres)</span></label>
+      <input class="fi" type="password" id="rp-pass" placeholder="••••••••">
+      <label class="fl">Confirmar contraseña</label>
+      <input class="fi" type="password" id="rp-pass2" placeholder="••••••••" onkeydown="if(event.key==='Enter')doResetPassword()">
+      <button class="btn-main" id="rp-btn" onclick="doResetPassword()">Guardar nueva contraseña</button>
+      <div class="auth-msg" id="rp-msg"></div>
     </div>
   </div>
 </div>
@@ -95,6 +113,7 @@
         <i class="ti ti-user icon-sm"></i>
         <span id="user-name-pill">—</span>
         <span class="admin-badge-pill hidden" id="admin-badge">Admin</span>
+        <button onclick="openEditProfile()" title="Editar mi perfil"><i class="ti ti-pencil icon-sm"></i></button>
         <button onclick="doLogout()">Salir</button>
       </div>
     </div>
@@ -145,7 +164,7 @@
         <div class="section-title">Oportunidades de vinculación detectadas</div>
         <span class="count-pill" id="vin-count">0</span>
       </div>
-      <p class="hint-text">Organizaciones cuyas <strong>necesidades sin cubrir</strong> coinciden con <strong>servicios o productos</strong> de otra organización de la red.</p>
+      <p class="hint-text">Organizaciones cuyas <strong>necesidades sin cubrir</strong> coinciden con <strong>servicios o productos</strong> de otra organización de la red. Las marcadas como "Coincidencia exacta" son más confiables que las de "Posible coincidencia".</p>
       <div class="vin-list" id="vin-list"></div>
     </div>
 
@@ -201,7 +220,8 @@
           </div>
           <div class="form-group">
             <label class="form-label">Sector / Industria</label>
-            <input class="form-input" id="f-sector" type="text" placeholder="Ej: Automatización industrial">
+            <input class="form-input" id="f-sector" type="text" list="sectores-list" placeholder="Ej: Automatización industrial">
+            <datalist id="sectores-list"></datalist>
           </div>
         </div>
 
@@ -240,21 +260,26 @@
         <div class="form-section">Descripción y servicios</div>
         <div class="form-group"><label class="form-label">Descripción general</label><textarea class="form-input form-textarea" id="f-desc" placeholder="Actividad principal, mercados, trayectoria..."></textarea></div>
         <div class="form-group">
-          <label class="form-label">Servicios / Productos <span class="label-note">(Enter para agregar cada uno)</span></label>
+          <label class="form-label">Servicios / Productos <span class="label-note">(elegí una categoría o escribí la tuya y Enter)</span></label>
+          <div class="quick-tags" id="quick-ofertas"></div>
           <div class="tag-iw" id="wrap-ofertas"><input type="text" id="input-ofertas" placeholder="Ej: Metrología industrial..." onkeydown="addTag(event,'ofertas')"></div>
         </div>
         <div class="form-section">Instalaciones disponibles</div>
         <div class="form-group">
-          <label class="form-label">Equipamiento e instalaciones <span class="label-note">(Enter para agregar cada uno)</span></label>
+          <label class="form-label">Equipamiento e instalaciones <span class="label-note">(elegí una categoría o escribí la tuya y Enter)</span></label>
+          <div class="quick-tags" id="quick-instalaciones"></div>
           <div class="tag-iw" id="wrap-instalaciones"><input type="text" id="input-instalaciones" placeholder="Ej: Laboratorio, CNC..." onkeydown="addTag(event,'instalaciones')"></div>
         </div>
         <div class="form-section">Necesidades</div>
         <div class="form-group">
-          <label class="form-label">Necesidades sin proveedor <span class="label-note">(Enter para agregar cada una)</span></label>
+          <label class="form-label">Necesidades sin proveedor <span class="label-note">(elegí una categoría o escribí la tuya y Enter)</span></label>
+          <p class="hint-text hint-tight">Usar las mismas categorías que otras empresas ofrecen mejora mucho la detección de vinculaciones.</p>
+          <div class="quick-tags" id="quick-needs-uncovered"></div>
           <div class="tag-iw" id="wrap-needs-uncovered"><input type="text" id="input-needs-uncovered" placeholder="Ej: Análisis de fatiga de materiales..." onkeydown="addTag(event,'needs-uncovered')"></div>
         </div>
         <div class="form-group">
-          <label class="form-label">Necesidades cubiertas con proveedores <span class="label-note">(Enter para agregar cada una)</span></label>
+          <label class="form-label">Necesidades cubiertas con proveedores <span class="label-note">(elegí una categoría o escribí la tuya y Enter)</span></label>
+          <div class="quick-tags" id="quick-needs-covered"></div>
           <div class="tag-iw" id="wrap-needs-covered"><input type="text" id="input-needs-covered" placeholder="Ej: Mantenimiento eléctrico..." onkeydown="addTag(event,'needs-covered')"></div>
         </div>
 
@@ -322,6 +347,24 @@
       <button class="btn-out" onclick="closeModal('modal-ubicacion')">Cancelar</button>
     </div>
     <div class="form-msg" id="ub-msg"></div>
+  </div>
+</div>
+
+<!-- MODAL: EDITAR PERFIL PROPIO -->
+<div class="modal-overlay" id="modal-perfil">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2>Editar mi perfil</h2>
+      <button class="modal-close" onclick="closeModal('modal-perfil')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="form-group"><label class="form-label">Nombre *</label><input class="form-input" id="pf-nombre" type="text"></div>
+    <div class="form-group"><label class="form-label">Apellido *</label><input class="form-input" id="pf-apellido" type="text"></div>
+    <div class="form-group"><label class="form-label">Teléfono</label><input class="form-input" id="pf-tel" type="text" placeholder="+54 11 1234-5678"></div>
+    <div class="action-row">
+      <button class="btn-prim" onclick="guardarPerfil()"><i class="ti ti-check"></i> Guardar</button>
+      <button class="btn-out" onclick="closeModal('modal-perfil')">Cancelar</button>
+    </div>
+    <div class="form-msg" id="pf-msg"></div>
   </div>
 </div>
 

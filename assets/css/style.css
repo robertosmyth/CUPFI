@@ -32,6 +32,9 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:#f5f4fc;}
 .auth-msg{font-size:12px;margin-top:10px;display:none;}
 .hint{font-size:11px;color:var(--fi-gray);margin-bottom:10px;line-height:1.5;}
 .form-row-2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.auth-links{text-align:center;margin-top:10px;}
+.auth-links a{font-size:11px;color:var(--fi-c1);text-decoration:none;cursor:pointer;}
+.auth-links a:hover{text-decoration:underline;}
 
 /* TOPBAR */
 .main-app{display:none;min-height:100vh;}
@@ -47,7 +50,7 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:#f5f4fc;}
 .tab-btn.admin-tab{background:rgba(255,200,0,.2);color:#ffe082;}
 .tab-btn.admin-tab.active{background:rgba(255,200,0,.35);color:#fff9c4;}
 .user-pill{background:rgba(255,255,255,.15);border-radius:20px;padding:4px 12px;font-size:11px;color:#fff;display:flex;align-items:center;gap:6px;margin-left:8px;}
-.user-pill button{background:rgba(255,255,255,.2);border:none;color:#fff;font-family:'Poppins',sans-serif;font-size:10px;padding:2px 8px;border-radius:10px;cursor:pointer;}
+.user-pill button{background:rgba(255,255,255,.2);border:none;color:#fff;font-family:'Poppins',sans-serif;font-size:10px;padding:2px 8px;border-radius:10px;cursor:pointer;display:inline-flex;align-items:center;}
 .user-pill button:hover{background:rgba(255,255,255,.35);}
 .admin-badge-pill{background:rgba(255,193,7,.3);color:#fff9c4;border-radius:10px;padding:1px 8px;font-size:10px;font-weight:600;}
 .accent-bar{height:3px;background:linear-gradient(90deg,var(--fi-c1),var(--fi-c2));}
@@ -118,10 +121,10 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:#f5f4fc;}
 .dsec{margin-bottom:1.1rem;}
 .dsec-title{font-size:10px;font-weight:600;color:var(--fi-c2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--fi-light2);}
 .drow{font-size:12px;color:#444;display:flex;gap:7px;align-items:center;margin-bottom:3px;}
-.match-card{background:var(--fi-light);border-radius:4px;border-left:3px solid var(--fi-c1);padding:10px 12px;margin-bottom:8px;cursor:pointer;}
+.match-card{background:var(--fi-light);border-radius:4px;border-left:3px solid var(--fi-c1);padding:10px 12px;margin-bottom:8px;}
 .match-card:hover{background:var(--fi-light2);}
-.match-label{font-size:10px;font-weight:600;color:var(--fi-c1);margin-bottom:3px;}
-.match-name{font-size:13px;font-weight:600;color:var(--fi);}
+.match-label{font-size:10px;font-weight:600;color:var(--fi-c1);margin-bottom:3px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.match-name{font-size:13px;font-weight:600;color:var(--fi);cursor:pointer;}
 .match-detail{font-size:11px;color:#555;margin-top:3px;}
 
 /* MAP */
@@ -165,6 +168,11 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:#f5f4fc;}
 .logo-preview{width:64px;height:64px;object-fit:contain;border-radius:4px;border:1px solid #eee;}
 .logo-clear{font-size:11px;color:#c62828;cursor:pointer;background:none;border:none;font-family:'Poppins',sans-serif;}
 
+/* Categorías rápidas (quick-tags) */
+.quick-tags{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;}
+.quick-tag-btn{font-family:'Poppins',sans-serif;font-size:10px;padding:4px 10px;border-radius:12px;border:1px dashed var(--fi-c2);background:#fff;color:var(--fi-c2);cursor:pointer;}
+.quick-tag-btn:hover{background:var(--fi-light);}
+
 /* VIN */
 .vin-list{display:flex;flex-direction:column;gap:10px;}
 .vin-row{background:#fff;border:1px solid #e0dcf8;border-radius:6px;border-left:4px solid var(--fi);padding:12px 16px;}
@@ -174,8 +182,22 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:#f5f4fc;}
 .vc-name:hover{color:var(--fi-c1);text-decoration:underline;}
 .vc-ref{font-size:10px;color:var(--fi-gray);}
 .vc-arrow{color:var(--fi-c2);font-size:20px;text-align:center;}
+.vin-items{margin-top:10px;display:flex;flex-direction:column;gap:6px;}
+.vin-item{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px;}
+.vin-contact{margin-top:8px;border-top:1px solid var(--fi-light2);padding-top:8px;}
 .empty{text-align:center;padding:3rem 1rem;color:var(--fi-gray);font-size:13px;}
 .empty i{font-size:36px;margin-bottom:12px;display:block;color:var(--fi-c2);}
+
+/* Contacto directo */
+.btn-contact{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-family:'Poppins',sans-serif;padding:5px 10px;border-radius:4px;background:var(--fi-c1);color:#fff;text-decoration:none;margin-right:6px;margin-top:4px;}
+.btn-contact:hover{background:var(--fi-dark);}
+.detail-contact-actions{margin-top:8px;}
+.match-contact{margin-top:6px;}
+
+/* Fuerza de la coincidencia */
+.match-strength{font-size:9px;padding:1px 7px;border-radius:8px;font-weight:600;white-space:nowrap;}
+.match-strength--strong{background:#e8f5e9;color:#2e7d32;}
+.match-strength--weak{background:#fff3e0;color:#e65100;}
 
 /* ADMIN */
 .admin-table{width:100%;border-collapse:collapse;background:#fff;border-radius:6px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06);margin-bottom:1.5rem;}
@@ -263,3 +285,26 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:#f5f4fc;}
 .map-popup-meta{font-size:11px;color:#555;margin-bottom:2px;}
 .map-popup-addr{font-size:10px;color:var(--fi-gray);margin-bottom:8px;}
 .map-popup-btn{background:var(--fi);color:#fff;border:none;border-radius:4px;font-size:11px;padding:5px 12px;cursor:pointer;font-family:'Poppins',sans-serif;width:100%;}
+
+/* ══════════════════════════════════════════════
+   RESPONSIVE (celulares y tablets chicas)
+   ══════════════════════════════════════════════ */
+@media (max-width: 780px){
+  .topbar{flex-wrap:wrap;height:auto;padding:.75rem 1rem;gap:8px;}
+  .tabs{margin-left:0;width:100%;overflow-x:auto;flex-wrap:nowrap;padding-bottom:4px;}
+  .tab-btn{flex-shrink:0;}
+  .user-pill{margin-left:0;}
+  .stats-grid{grid-template-columns:repeat(2,1fr);}
+  .form-row,.form-row-2{grid-template-columns:1fr;}
+  .vc{grid-template-columns:1fr;text-align:center;}
+  .vc-arrow{transform:rotate(90deg);margin:2px 0;}
+  .card-grid{grid-template-columns:1fr;}
+  .modal{max-width:100%;margin:0;border-radius:0;min-height:100vh;}
+  .modal-overlay{padding:0;}
+  .main{padding:1rem;}
+}
+@media (max-width: 480px){
+  .stats-grid{grid-template-columns:1fr 1fr;}
+  .auth-card{padding:1.25rem;}
+  .auth-wrap{padding:1rem;}
+}
