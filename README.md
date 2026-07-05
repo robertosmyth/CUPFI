@@ -30,7 +30,9 @@ CUPFI/
 │   ├── 003_lockdown_role_and_uid.sql      # Bloquea auto-escalación de rol / robo de empresa
 │   ├── 004_admin_role_management.sql      # Permite que un admin cambie el rol de otros usuarios
 │   ├── 005_seed_demo_empresas.sql         # (Opcional) 17 empresas de ejemplo para poblar el directorio
-│   └── 006_updated_at_trigger.sql         # Actualiza empresas.updated_at automáticamente al editar
+│   ├── 006_updated_at_trigger.sql         # Actualiza empresas.updated_at automáticamente al editar
+│   ├── 007_fix_admin_role_via_dashboard.sql # Permite cambiar el rol desde el Table Editor de Supabase
+│   └── 008_roles_reference_table.sql      # Normaliza profiles.role con una tabla roles (FK)
 └── README.md
 ```
 
@@ -124,20 +126,33 @@ completa falta correr algunas migraciones chicas, en este orden:
 5. Pegá y ejecutá [`sql/006_updated_at_trigger.sql`](sql/006_updated_at_trigger.sql),
    para que la fecha de última modificación de cada empresa se actualice
    sola al editarla (antes quedaba siempre con la fecha de creación).
-6. (Opcional) Pegá y ejecutá [`sql/005_seed_demo_empresas.sql`](sql/005_seed_demo_empresas.sql)
+6. Pegá y ejecutá [`sql/007_fix_admin_role_via_dashboard.sql`](sql/007_fix_admin_role_via_dashboard.sql).
+   **Importante:** sin este paso, si cambiás el rol de un usuario a mano
+   desde el Table Editor o el SQL Editor de Supabase, el valor se revierte
+   solo a `user` sin avisar ningún error (el trigger de 003/004 confunde
+   una edición directa del dueño del proyecto con un intento de
+   auto-escalación). Este paso lo corrige.
+7. Pegá y ejecutá [`sql/008_roles_reference_table.sql`](sql/008_roles_reference_table.sql),
+   que reemplaza el `check (role in ('user','admin'))` por una tabla real
+   `public.roles` con clave foránea — mismo comportamiento, pero mejor
+   normalizado (podés ver y documentar los roles válidos con un `select *
+   from public.roles`, y agregar roles nuevos en el futuro sin tocar el
+   constraint).
+8. (Opcional) Pegá y ejecutá [`sql/005_seed_demo_empresas.sql`](sql/005_seed_demo_empresas.sql)
    si querés que el directorio no arranque vacío: carga 17 organizaciones
    de ejemplo sin asociarlas a ningún usuario real.
-7. Registrate normalmente desde la app (pestaña "Registrarse"). La
+9. Registrate normalmente desde la app (pestaña "Registrarse"). La
    **primera** cuenta de un proyecto nuevo no es admin automáticamente:
    hay que asignarle el rol manualmente (paso siguiente). A partir de ahí,
    ese primer admin puede promover a cualquier otro usuario desde la propia
    app, sin volver a tocar la base de datos.
-8. Para convertirte en administrador la primera vez, en el **Table Editor**
-   de Supabase abrí la tabla `profiles` y cambiá tu fila: `role = admin`. O
-   corré en el SQL Editor:
-   ```sql
-   update public.profiles set role = 'admin' where email = 'tu-email@ejemplo.com';
-   ```
+10. Para convertirte en administrador la primera vez, en el **Table Editor**
+    de Supabase abrí la tabla `profiles` y cambiá tu fila: `role = admin`. O
+    corré en el SQL Editor:
+    ```sql
+    update public.profiles set role = 'admin' where email = 'tu-email@ejemplo.com';
+    ```
+    (Esto ya funciona bien una vez que corriste el paso 6 de arriba.)
 
 Si en algún momento armás un proyecto de Supabase nuevo desde cero, usá
 [`sql/001_schema.sql`](sql/001_schema.sql), que contiene el esquema completo

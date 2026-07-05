@@ -7,6 +7,24 @@
 -- que solo agrega lo nuevo (email en profiles + bucket de logos).
 -- ═══════════════════════════════════════════════════════════════
 
+-- ROLES: tabla de referencia (normaliza profiles.role)
+create table if not exists public.roles (
+  name text primary key,
+  descripcion text not null
+);
+
+insert into public.roles (name, descripcion) values
+  ('user',  'Graduado con acceso estándar: puede cargar y editar sus propias empresas.'),
+  ('admin', 'Puede gestionar usuarios (cambiar roles) y editar o borrar cualquier empresa.')
+on conflict (name) do nothing;
+
+alter table public.roles enable row level security;
+
+drop policy if exists "Roles visibles para todos los autenticados" on public.roles;
+create policy "Roles visibles para todos los autenticados"
+  on public.roles for select
+  to authenticated using (true);
+
 -- USUARIOS (extiende la autenticación de Supabase)
 create table if not exists public.profiles (
   id uuid references auth.users on delete cascade primary key,
@@ -14,7 +32,7 @@ create table if not exists public.profiles (
   apellido text not null,
   email text,
   tel text,
-  role text default 'user' check (role in ('user','admin')),
+  role text default 'user' references public.roles(name) on update cascade,
   created_at timestamp with time zone default timezone('utc'::text, now())
 );
 
@@ -150,12 +168,16 @@ create policy "Usuarios autenticados borran sus logos"
 -- SEGURIDAD: nadie puede auto-promoverse a admin ni "transferir" una
 -- empresa cambiando su dueño desde el cliente. Un admin sí puede cambiar
 -- el rol de otros usuarios (panel Admin de la app) porque la condición
--- de abajo lo permite explícitamente.
+-- de abajo lo permite explícitamente. auth.uid() es NULL cuando el
+-- cambio se hace directamente desde el SQL Editor / Table Editor de
+-- Supabase (superusuario): en ese caso se permite siempre, porque solo
+-- el dueño del proyecto tiene acceso a esa consola.
 create or replace function public.prevent_role_change()
 returns trigger as $$
 begin
   if NEW.role is distinct from OLD.role then
-    if not exists (select 1 from public.profiles where id = auth.uid() and role = 'admin') then
+    if auth.uid() is not null
+       and not exists (select 1 from public.profiles where id = auth.uid() and role = 'admin') then
       NEW.role := OLD.role;
     end if;
   end if;
