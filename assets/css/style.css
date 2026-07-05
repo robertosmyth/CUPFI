@@ -308,3 +308,8 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:#f5f4fc;}
   .auth-card{padding:1.25rem;}
   .auth-wrap{padding:1rem;}
 }
+
+/* Modal "asignar usuarios a empresa" (admin) */
+.asig-item{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;background:#f4f4f4;border-radius:6px;margin-bottom:6px;font-size:13px;}
+.asig-item .btn-danger.btn-sm{padding:3px 8px;font-size:11px;}
+.btn-danger.btn-sm{padding:3px 8px;font-size:11px;}

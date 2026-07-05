@@ -368,6 +368,34 @@
   </div>
 </div>
 
+<!-- MODAL: ASIGNAR USUARIOS A EMPRESA (admin) -->
+<div class="modal-overlay" id="modal-asignar">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2 id="modal-asignar-title">Usuarios de la empresa</h2>
+      <button class="modal-close" onclick="closeModal('modal-asignar')"><i class="ti ti-x"></i></button>
+    </div>
+    <input type="hidden" id="asig-empresa-id">
+    <div class="form-group">
+      <label class="form-label">Dueño principal</label>
+      <select class="form-input" id="asig-dueno" onchange="cambiarDuenoEmpresa()"></select>
+      <p class="hint-text hint-tight">Es quien figura como creador de la empresa. Los usuarios agregados abajo también pueden editarla, pero no aparecen como dueño.</p>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Usuarios asociados (además del dueño)</label>
+      <div id="asig-lista"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Agregar usuario</label>
+      <div class="form-row-2">
+        <select class="form-input" id="asig-nuevo-usuario"></select>
+        <button class="btn-out" onclick="agregarUsuarioAEmpresa()"><i class="ti ti-plus"></i> Agregar</button>
+      </div>
+    </div>
+    <div class="form-msg" id="asig-msg"></div>
+  </div>
+</div>
+
 <script type="module" src="assets/js/main.js"></script>
 </body>
 </html>

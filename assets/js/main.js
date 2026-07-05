@@ -16,6 +16,7 @@ let activeFilter = 'todos';
 let currentProfile = null;
 let orgs = [];
 let profiles = [];
+let asociaciones = []; // filas de empresa_usuarios (ver sql/009)
 let editingId = null;
 let currentLogoFile = null; // File real seleccionado (se sube recién al guardar)
 let currentLogoUrl = null;  // URL ya existente (modo edición) o recién subida
@@ -265,9 +266,34 @@ async function enterApp() {
 }
 
 async function refreshData() {
-  const [e, p] = await Promise.all([Empresas.listEmpresas(), Auth.listProfiles()]);
+  const [e, p, a] = await Promise.all([Empresas.listEmpresas(), Auth.listProfiles(), Empresas.listAsociaciones()]);
   orgs = e;
   profiles = p;
+  asociaciones = a;
+  orgs.forEach(o => { o.usuarios = usuariosDeEmpresa(o); });
+}
+
+// Todos los usuarios con acceso a una empresa: el dueño principal
+// (o.uid) más los usuarios adicionales que un admin haya asociado
+// desde el panel (empresa_usuarios, ver sql/009).
+function usuariosDeEmpresa(o) {
+  const ids = new Set();
+  if (o.uid) ids.add(o.uid);
+  asociaciones.filter(a => a.empresa_id === o.id).forEach(a => ids.add(a.user_id));
+  return [...ids];
+}
+
+// ¿El usuario currentProfile tiene acceso de edición a esta empresa?
+function esMiEmpresa(o) {
+  if (!currentProfile) return false;
+  if (currentProfile.role === 'admin') return true;
+  return (o.usuarios || usuariosDeEmpresa(o)).includes(currentProfile.id);
+}
+
+// ¿userId es dueño o usuario asociado de esta empresa? (sin contar admin)
+function esUsuarioDeEmpresa(o, userId) {
+  if (!userId) return false;
+  return (o.usuarios || usuariosDeEmpresa(o)).includes(userId);
 }
 
 // ══════════════════════════════════════════════
@@ -376,7 +402,7 @@ window.renderDir = function () {
 
 // Tarjeta de organización, compartida entre el Directorio y "Mis empresas".
 function renderOrgCard(o) {
-  const mine = currentProfile && o.uid === currentProfile.id;
+  const mine = currentProfile && esUsuarioDeEmpresa(o, currentProfile.id);
   const loc = [o.ciudad, o.provincia].filter(Boolean).join(', ');
   return `<div class="org-card${mine ? ' mine' : ''}" onclick="openDetail(${o.id})">
     ${mine ? '<div class="mine-badge"><i class="ti ti-star"></i>Mi empresa</div>' : ''}
@@ -401,7 +427,7 @@ window.renderGraduados = function () {
   const visible = profiles.filter(u => u.role !== 'admin');
   const filtered = visible.filter(u => {
     if (!q) return true;
-    const uOrgs = orgs.filter(o => o.uid === u.id).map(o => o.nombre).join(' ');
+    const uOrgs = orgs.filter(o => esUsuarioDeEmpresa(o, u.id)).map(o => o.nombre).join(' ');
     return [u.nombre, u.apellido, u.email, uOrgs].join(' ').toLowerCase().includes(q);
   });
 
@@ -412,7 +438,7 @@ window.renderGraduados = function () {
     return;
   }
   grid.innerHTML = filtered.map(u => {
-    const uOrgs = orgs.filter(o => o.uid === u.id);
+    const uOrgs = orgs.filter(o => esUsuarioDeEmpresa(o, u.id));
     const isSelf = currentProfile && u.id === currentProfile.id;
     return `<div class="user-card">
       <div class="user-card-head">
@@ -544,7 +570,7 @@ window._openDetail = function (id) {
 // ══════════════════════════════════════════════
 window.renderMias = function () {
   if (!currentProfile) return;
-  const mine = orgs.filter(o => o.uid === currentProfile.id);
+  const mine = orgs.filter(o => esUsuarioDeEmpresa(o, currentProfile.id));
   document.getElementById('mis-count').textContent = mine.length;
   const grid = document.getElementById('mis-grid');
   if (!mine.length) {
@@ -565,7 +591,7 @@ window.openDetail = function (id) {
   const o = orgs.find(x => x.id === id);
   if (!o) return;
   const mx = findMatchesFor(orgs, o);
-  const mine = currentProfile && (o.uid === currentProfile.id || currentProfile.role === 'admin');
+  const mine = currentProfile && (esUsuarioDeEmpresa(o, currentProfile.id) || currentProfile.role === 'admin');
   const addr = buildAddress(o);
   const u = getProfileById(o.uid);
   const mapsUrl = addr ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}` : '';
@@ -1006,7 +1032,8 @@ window.renderAdmin = function () {
       <td><div class="action-btns">
         <button class="btn-edit-inline" onclick="startEdit(${o.id})" title="Editar empresa"><i class="ti ti-pencil"></i></button>
         <button class="btn-loc" onclick="openEditUbicacion(${o.id})" title="Editar ubicación"><i class="ti ti-map-pin"></i></button>
-        <button class="btn-danger" onclick="deleteOrg(${o.id})" title="Eliminar empresa"><i class="ti ti-trash"></i></button>
+        <button class="btn-out" onclick="openAsignarUsuarios(${o.id})" title="Usuarios asociados"><i class="ti ti-users"></i></button>
+        <button class="btn-danger" onclick="deleteOrg(${o.id})" title="Eliminar empresa (esta acción no se puede deshacer)"><i class="ti ti-trash"></i></button>
       </div></td>
     </tr>`).join('');
 
@@ -1025,7 +1052,7 @@ window.renderAdmin = function () {
       <td><strong>${esc(u.nombre + ' ' + (u.apellido || ''))}</strong>${isSelf ? ' <span class="badge-self">Vos</span>' : ''}</td>
       <td class="td-sm">${esc(u.email || '—')}</td>
       <td class="td-sm">${esc(u.tel || '—')}</td>
-      <td class="td-sm">${orgs.filter(o => o.uid === u.id).length}</td>
+      <td class="td-sm">${orgs.filter(o => esUsuarioDeEmpresa(o, u.id)).length}</td>
       <td><span class="role-badge ${isAdmin ? 'role-badge--admin' : 'role-badge--user'}">${isAdmin ? 'Admin' : 'Usuario'}</span></td>
       <td>${isSelf
         ? '<span class="muted-sm">No podés cambiar tu propio rol</span>'
@@ -1053,12 +1080,107 @@ window.toggleUserRole = async function (userId, newRole) {
 };
 
 window.deleteOrg = async function (id) {
-  if (!confirm('¿Eliminar esta empresa definitivamente?')) return;
+  const o = orgs.find(x => x.id === id);
+  const nombre = o ? o.nombre : 'esta empresa';
+  if (!confirm(`¿Eliminar definitivamente "${nombre}"? Esta acción no se puede deshacer.`)) return;
   try {
     await Empresas.deleteEmpresa(id);
     await refreshData();
     renderAdmin();
   } catch (e) {
     alert(friendlyError(e));
+  }
+};
+
+// ══════════════════════════════════════════════
+// ASIGNAR / DESASIGNAR EMPRESA A USUARIOS (admin)
+// ══════════════════════════════════════════════
+window.openAsignarUsuarios = function (empresaId) {
+  const o = orgs.find(x => x.id === empresaId);
+  if (!o) return;
+  document.getElementById('asig-empresa-id').value = empresaId;
+  document.getElementById('modal-asignar-title').textContent = 'Usuarios de: ' + o.nombre;
+
+  const duenoSel = document.getElementById('asig-dueno');
+  duenoSel.innerHTML = '<option value="">— Sin dueño asignado —</option>' +
+    profiles.map(u => `<option value="${u.id}" ${u.id === o.uid ? 'selected' : ''}>${esc(u.nombre + ' ' + (u.apellido || ''))} (${esc(u.email || '')})</option>`).join('');
+
+  renderAsignarNuevoUsuarioSelect(empresaId);
+  renderAsignarLista(empresaId);
+  document.getElementById('asig-msg').style.display = 'none';
+  document.getElementById('modal-asignar').classList.add('open');
+};
+
+function renderAsignarLista(empresaId) {
+  const o = orgs.find(x => x.id === empresaId);
+  const ids = asociaciones.filter(a => a.empresa_id === empresaId).map(a => a.user_id);
+  const html = ids.length
+    ? ids.map(uid => {
+        const u = getProfileById(uid);
+        const nombre = u ? `${u.nombre} ${u.apellido || ''}`.trim() : uid;
+        return `<div class="asig-item"><span>${esc(nombre)}</span><button class="btn-danger btn-sm" onclick="quitarUsuarioDeEmpresa(${empresaId}, '${uid}')" title="Quitar"><i class="ti ti-x"></i></button></div>`;
+      }).join('')
+    : '<p class="muted-sm">Sin usuarios adicionales.</p>';
+  document.getElementById('asig-lista').innerHTML = html;
+}
+
+function renderAsignarNuevoUsuarioSelect(empresaId) {
+  const o = orgs.find(x => x.id === empresaId);
+  const yaAsociados = new Set(asociaciones.filter(a => a.empresa_id === empresaId).map(a => a.user_id));
+  const disponibles = profiles.filter(u => u.id !== o.uid && !yaAsociados.has(u.id));
+  const sel = document.getElementById('asig-nuevo-usuario');
+  sel.innerHTML = disponibles.length
+    ? disponibles.map(u => `<option value="${u.id}">${esc(u.nombre + ' ' + (u.apellido || ''))} (${esc(u.email || '')})</option>`).join('')
+    : '<option value="">No hay más usuarios para agregar</option>';
+}
+
+function asigMsg(text, type) {
+  const msg = document.getElementById('asig-msg');
+  msg.textContent = text;
+  msg.className = `form-msg ${type}`;
+  msg.style.display = 'block';
+}
+
+window.cambiarDuenoEmpresa = async function () {
+  const empresaId = parseInt(document.getElementById('asig-empresa-id').value, 10);
+  const nuevoUid = document.getElementById('asig-dueno').value || null;
+  try {
+    await Empresas.reasignarDueno(empresaId, nuevoUid);
+    await refreshData();
+    renderAdmin();
+    renderAsignarNuevoUsuarioSelect(empresaId);
+    renderAsignarLista(empresaId);
+    asigMsg('✓ Dueño principal actualizado.', 'ok');
+  } catch (e) {
+    asigMsg(friendlyError(e), 'err');
+  }
+};
+
+window.agregarUsuarioAEmpresa = async function () {
+  const empresaId = parseInt(document.getElementById('asig-empresa-id').value, 10);
+  const userId = document.getElementById('asig-nuevo-usuario').value;
+  if (!userId) return;
+  try {
+    await Empresas.asignarUsuario(empresaId, userId);
+    await refreshData();
+    renderAdmin();
+    renderAsignarNuevoUsuarioSelect(empresaId);
+    renderAsignarLista(empresaId);
+    asigMsg('✓ Usuario agregado.', 'ok');
+  } catch (e) {
+    asigMsg(friendlyError(e), 'err');
+  }
+};
+
+window.quitarUsuarioDeEmpresa = async function (empresaId, userId) {
+  if (!confirm('¿Quitar a este usuario de la empresa? Va a perder acceso para editarla.')) return;
+  try {
+    await Empresas.desasignarUsuario(empresaId, userId);
+    await refreshData();
+    renderAdmin();
+    renderAsignarNuevoUsuarioSelect(empresaId);
+    renderAsignarLista(empresaId);
+  } catch (e) {
+    asigMsg(friendlyError(e), 'err');
   }
 };

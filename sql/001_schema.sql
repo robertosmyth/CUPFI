@@ -103,6 +103,7 @@ create policy "Usuarios editan sus propias empresas"
   on public.empresas for update
   to authenticated using (
     auth.uid() = uid or
+    exists (select 1 from public.empresa_usuarios where empresa_id = empresas.id and user_id = auth.uid()) or
     exists (select 1 from public.profiles where id = auth.uid() and role = 'admin')
   );
 
@@ -111,6 +112,7 @@ create policy "Usuarios eliminan sus propias empresas"
   on public.empresas for delete
   to authenticated using (
     auth.uid() = uid or
+    exists (select 1 from public.empresa_usuarios where empresa_id = empresas.id and user_id = auth.uid()) or
     exists (select 1 from public.profiles where id = auth.uid() and role = 'admin')
   );
 
@@ -193,7 +195,12 @@ create trigger prevent_role_change_trigger
 create or replace function public.prevent_empresa_uid_change()
 returns trigger as $$
 begin
-  NEW.uid := OLD.uid;
+  if NEW.uid is distinct from OLD.uid then
+    if auth.uid() is not null
+       and not exists (select 1 from public.profiles where id = auth.uid() and role = 'admin') then
+      NEW.uid := OLD.uid;
+    end if;
+  end if;
   return NEW;
 end;
 $$ language plpgsql security definer set search_path = public;
@@ -216,6 +223,31 @@ drop trigger if exists set_empresas_updated_at on public.empresas;
 create trigger set_empresas_updated_at
   before update on public.empresas
   for each row execute procedure public.set_updated_at();
+
+-- ASOCIACIÓN empresa <-> usuario: además del dueño principal
+-- (empresas.uid), una empresa puede tener otros usuarios asociados
+-- que también pueden editarla (por ejemplo varios socios con
+-- cuentas separadas). Gestionado por un admin desde el panel.
+create table if not exists public.empresa_usuarios (
+  empresa_id bigint not null references public.empresas(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamp with time zone default timezone('utc'::text, now()),
+  primary key (empresa_id, user_id)
+);
+
+alter table public.empresa_usuarios enable row level security;
+
+drop policy if exists "Ver asociaciones empresa-usuario" on public.empresa_usuarios;
+create policy "Ver asociaciones empresa-usuario"
+  on public.empresa_usuarios for select
+  to authenticated using (true);
+
+drop policy if exists "Solo admin gestiona asociaciones" on public.empresa_usuarios;
+create policy "Solo admin gestiona asociaciones"
+  on public.empresa_usuarios for all
+  to authenticated
+  using (exists (select 1 from public.profiles where id = auth.uid() and role = 'admin'))
+  with check (exists (select 1 from public.profiles where id = auth.uid() and role = 'admin'));
 
 -- ADMIN por defecto: se asigna manualmente desde el dashboard con:
 -- update public.profiles set role = 'admin' where email = 'tu-email@fi.unlz.edu.ar';

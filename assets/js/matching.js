@@ -17,8 +17,15 @@
 // ══════════════════════════════════════════════
 import { overlap, normalizeTagKey } from './utils.js';
 
+// Considera "mismo dueño" si comparten al menos un usuario asociado
+// (dueño principal o alguno de los usuarios adicionales agregados por
+// un admin, ver sql/009_empresa_usuarios.sql). Si a.usuarios/b.usuarios
+// no están presentes (por compatibilidad), cae al chequeo simple por uid.
 function isSameOwner(a, b) {
-  return !!a.uid && !!b.uid && a.uid === b.uid;
+  const au = a.usuarios || (a.uid ? [a.uid] : []);
+  const bu = b.usuarios || (b.uid ? [b.uid] : []);
+  if (!au.length || !bu.length) return false;
+  return au.some(id => bu.includes(id));
 }
 
 function isStrongMatch(need, offer) {

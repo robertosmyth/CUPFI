@@ -81,6 +81,39 @@ export async function deleteEmpresa(id) {
   if (error) throw error;
 }
 
+// ══════════════════════════════════════════════
+// ASIGNACIÓN DE EMPRESAS A USUARIOS (solo admin, ver sql/009)
+// ══════════════════════════════════════════════
+
+// Cambia el dueño principal de una empresa (empresas.uid).
+// userId puede ser null para dejarla sin dueño asignado.
+export async function reasignarDueno(empresaId, userId) {
+  const supabase = await getSupabase();
+  const { data, error } = await supabase.from('empresas').update({ uid: userId }).eq('id', empresaId).select().single();
+  if (error) throw error;
+  return fromDb(data);
+}
+
+// Trae todas las asociaciones empresa↔usuario adicionales (además del dueño principal).
+export async function listAsociaciones() {
+  const supabase = await getSupabase();
+  const { data, error } = await supabase.from('empresa_usuarios').select('*');
+  if (error) throw error;
+  return data;
+}
+
+export async function asignarUsuario(empresaId, userId) {
+  const supabase = await getSupabase();
+  const { error } = await supabase.from('empresa_usuarios').insert({ empresa_id: empresaId, user_id: userId });
+  if (error) throw error;
+}
+
+export async function desasignarUsuario(empresaId, userId) {
+  const supabase = await getSupabase();
+  const { error } = await supabase.from('empresa_usuarios').delete().eq('empresa_id', empresaId).eq('user_id', userId);
+  if (error) throw error;
+}
+
 const MAX_LOGO_BYTES = 800_000; // 800 KB
 const ALLOWED_LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml', 'image/gif'];
 

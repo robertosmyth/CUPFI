@@ -32,7 +32,8 @@ CUPFI/
 │   ├── 005_seed_demo_empresas.sql         # (Opcional) 17 empresas de ejemplo para poblar el directorio
 │   ├── 006_updated_at_trigger.sql         # Actualiza empresas.updated_at automáticamente al editar
 │   ├── 007_fix_admin_role_via_dashboard.sql # Permite cambiar el rol desde el Table Editor de Supabase
-│   └── 008_roles_reference_table.sql      # Normaliza profiles.role con una tabla roles (FK)
+│   ├── 008_roles_reference_table.sql      # Normaliza profiles.role con una tabla roles (FK)
+│   └── 009_empresa_usuarios.sql           # Asignar/desasignar una empresa a varios usuarios (admin)
 └── README.md
 ```
 
@@ -55,6 +56,12 @@ CUPFI/
   directamente** por email o teléfono a la otra empresa.
 - El motor de vinculación (`assets/js/matching.js`) nunca cruza dos
   empresas del mismo graduado entre sí.
+- Una empresa puede tener, además de su dueño principal, **otros
+  usuarios asociados** (por ejemplo varios socios con cuentas
+  separadas): un admin los agrega o quita desde "Gestión de empresas"
+  → ícono de personas. Cualquiera de esos usuarios puede editar la
+  empresa, y el motor de vinculación tampoco cruza entre sí empresas
+  que comparten algún usuario asociado.
 
 ## Cómo funciona la seguridad
 
@@ -138,15 +145,22 @@ completa falta correr algunas migraciones chicas, en este orden:
    normalizado (podés ver y documentar los roles válidos con un `select *
    from public.roles`, y agregar roles nuevos en el futuro sin tocar el
    constraint).
-8. (Opcional) Pegá y ejecutá [`sql/005_seed_demo_empresas.sql`](sql/005_seed_demo_empresas.sql)
+8. Pegá y ejecutá [`sql/009_empresa_usuarios.sql`](sql/009_empresa_usuarios.sql).
+   Corrige el mismo problema que 007 pero para empresas: hasta ahora el
+   trigger que evita "robar" una empresa bloqueaba siempre cualquier
+   cambio de dueño, incluso hecho por un admin. Además crea la tabla
+   `empresa_usuarios`, que permite asociar más de un usuario a la misma
+   empresa (por ejemplo varios socios con cuentas separadas) desde el
+   panel Admin de la app.
+9. (Opcional) Pegá y ejecutá [`sql/005_seed_demo_empresas.sql`](sql/005_seed_demo_empresas.sql)
    si querés que el directorio no arranque vacío: carga 17 organizaciones
    de ejemplo sin asociarlas a ningún usuario real.
-9. Registrate normalmente desde la app (pestaña "Registrarse"). La
-   **primera** cuenta de un proyecto nuevo no es admin automáticamente:
-   hay que asignarle el rol manualmente (paso siguiente). A partir de ahí,
-   ese primer admin puede promover a cualquier otro usuario desde la propia
-   app, sin volver a tocar la base de datos.
-10. Para convertirte en administrador la primera vez, en el **Table Editor**
+10. Registrate normalmente desde la app (pestaña "Registrarse"). La
+    **primera** cuenta de un proyecto nuevo no es admin automáticamente:
+    hay que asignarle el rol manualmente (paso siguiente). A partir de ahí,
+    ese primer admin puede promover a cualquier otro usuario desde la propia
+    app, sin volver a tocar la base de datos.
+11. Para convertirte en administrador la primera vez, en el **Table Editor**
     de Supabase abrí la tabla `profiles` y cambiá tu fila: `role = admin`. O
     corré en el SQL Editor:
     ```sql
