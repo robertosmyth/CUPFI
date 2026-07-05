@@ -168,7 +168,8 @@ create policy "Usuarios autenticados borran sus logos"
   using (bucket_id = 'logos' and owner = auth.uid());
 
 -- SEGURIDAD: nadie puede auto-promoverse a admin ni "transferir" una
--- empresa cambiando su dueño desde el cliente. Un admin sí puede cambiar
+-- empresa cambiando quién es su administrador principal desde el cliente.
+-- Un admin sí puede cambiar
 -- el rol de otros usuarios (panel Admin de la app) porque la condición
 -- de abajo lo permite explícitamente. auth.uid() es NULL cuando el
 -- cambio se hace directamente desde el SQL Editor / Table Editor de
@@ -224,7 +225,7 @@ create trigger set_empresas_updated_at
   before update on public.empresas
   for each row execute procedure public.set_updated_at();
 
--- ASOCIACIÓN empresa <-> usuario: además del dueño principal
+-- ASOCIACIÓN empresa <-> usuario: además del administrador principal
 -- (empresas.uid), una empresa puede tener otros usuarios asociados
 -- que también pueden editarla (por ejemplo varios socios con
 -- cuentas separadas). Gestionado por un admin desde el panel.

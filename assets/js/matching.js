@@ -11,14 +11,14 @@
 //    se muestra para una necesidad puntual cuando no hay ninguna
 //    coincidencia "strong" para esa misma necesidad.
 //
-// Además, nunca se cruzan dos empresas del mismo dueño entre sí: un
+// Además, nunca se cruzan dos empresas del mismo administrador principal entre sí: un
 // graduado con varias empresas no necesita que el sistema le sugiera
 // vincular sus propias empresas entre ellas.
 // ══════════════════════════════════════════════
 import { overlap, normalizeTagKey } from './utils.js';
 
-// Considera "mismo dueño" si comparten al menos un usuario asociado
-// (dueño principal o alguno de los usuarios adicionales agregados por
+// Considera "mismo administrador" si comparten al menos un usuario asociado
+// (administrador principal o alguno de los usuarios adicionales agregados por
 // un admin, ver sql/009_empresa_usuarios.sql). Si a.usuarios/b.usuarios
 // no están presentes (por compatibilidad), cae al chequeo simple por uid.
 function isSameOwner(a, b) {

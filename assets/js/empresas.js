@@ -85,8 +85,8 @@ export async function deleteEmpresa(id) {
 // ASIGNACIÓN DE EMPRESAS A USUARIOS (solo admin, ver sql/009)
 // ══════════════════════════════════════════════
 
-// Cambia el dueño principal de una empresa (empresas.uid).
-// userId puede ser null para dejarla sin dueño asignado.
+// Cambia el administrador principal de una empresa (empresas.uid).
+// userId puede ser null para dejarla sin administrador principal asignado.
 export async function reasignarDueno(empresaId, userId) {
   const supabase = await getSupabase();
   const { data, error } = await supabase.from('empresas').update({ uid: userId }).eq('id', empresaId).select().single();
@@ -94,7 +94,7 @@ export async function reasignarDueno(empresaId, userId) {
   return fromDb(data);
 }
 
-// Trae todas las asociaciones empresa↔usuario adicionales (además del dueño principal).
+// Trae todas las asociaciones empresa↔usuario adicionales (además del administrador principal).
 export async function listAsociaciones() {
   const supabase = await getSupabase();
   const { data, error } = await supabase.from('empresa_usuarios').select('*');

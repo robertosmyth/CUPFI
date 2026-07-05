@@ -274,7 +274,7 @@ async function refreshData() {
   orgs.forEach(o => { o.usuarios = usuariosDeEmpresa(o); });
 }
 
-// Todos los usuarios con acceso a una empresa: el dueño principal
+// Todos los usuarios con acceso a una empresa: el administrador principal
 // (o.uid) más los usuarios adicionales que un admin haya asociado
 // desde el panel (empresa_usuarios, ver sql/009).
 function usuariosDeEmpresa(o) {
@@ -291,7 +291,7 @@ function esMiEmpresa(o) {
   return (o.usuarios || usuariosDeEmpresa(o)).includes(currentProfile.id);
 }
 
-// ¿userId es dueño o usuario asociado de esta empresa? (sin contar admin)
+// ¿userId es administrador principal o usuario asociado de esta empresa? (sin contar admin global)
 function esUsuarioDeEmpresa(o, userId) {
   if (!userId) return false;
   return (o.usuarios || usuariosDeEmpresa(o)).includes(userId);
@@ -1121,7 +1121,7 @@ window.openAsignarUsuarios = function (empresaId) {
   document.getElementById('modal-asignar-title').textContent = 'Usuarios de: ' + o.nombre;
 
   const duenoSel = document.getElementById('asig-dueno');
-  duenoSel.innerHTML = '<option value="">— Sin dueño asignado —</option>' +
+  duenoSel.innerHTML = '<option value="">— Sin administrador principal asignado —</option>' +
     profiles.map(u => `<option value="${u.id}" ${u.id === o.uid ? 'selected' : ''}>${esc(u.nombre + ' ' + (u.apellido || ''))} (${esc(u.email || '')})</option>`).join('');
 
   renderAsignarNuevoUsuarioSelect(empresaId);
@@ -1169,7 +1169,7 @@ window.cambiarDuenoEmpresa = async function () {
     renderAdmin();
     renderAsignarNuevoUsuarioSelect(empresaId);
     renderAsignarLista(empresaId);
-    asigMsg('✓ Dueño principal actualizado.', 'ok');
+    asigMsg('✓ Administrador principal actualizado.', 'ok');
   } catch (e) {
     asigMsg(friendlyError(e), 'err');
   }

@@ -56,7 +56,7 @@ CUPFI/
   directamente** por email o teléfono a la otra empresa.
 - El motor de vinculación (`assets/js/matching.js`) nunca cruza dos
   empresas del mismo graduado entre sí.
-- Una empresa puede tener, además de su dueño principal, **otros
+- Una empresa puede tener, además de su administrador principal, **otros
   usuarios asociados** (por ejemplo varios socios con cuentas
   separadas): un admin los agrega o quita desde "Gestión de empresas"
   → ícono de personas. Cualquiera de esos usuarios puede editar la
@@ -124,7 +124,8 @@ completa falta correr algunas migraciones chicas, en este orden:
    - el bucket público de Storage `logos` con sus políticas de acceso.
 3. Pegá y ejecutá también [`sql/003_lockdown_role_and_uid.sql`](sql/003_lockdown_role_and_uid.sql),
    que impide que un usuario se auto-promueva a admin o "robe" una empresa
-   cambiando su dueño desde el cliente (ver sección de seguridad arriba).
+   cambiando quién es su administrador principal desde el cliente (ver
+   sección de seguridad arriba).
 4. Pegá y ejecutá [`sql/004_admin_role_management.sql`](sql/004_admin_role_management.sql),
    que habilita la funcionalidad de gestión de usuarios del panel Admin
    (buscar un usuario y cambiarle el rol). Sin este paso, el resto de la app
@@ -148,10 +149,10 @@ completa falta correr algunas migraciones chicas, en este orden:
 8. Pegá y ejecutá [`sql/009_empresa_usuarios.sql`](sql/009_empresa_usuarios.sql).
    Corrige el mismo problema que 007 pero para empresas: hasta ahora el
    trigger que evita "robar" una empresa bloqueaba siempre cualquier
-   cambio de dueño, incluso hecho por un admin. Además crea la tabla
-   `empresa_usuarios`, que permite asociar más de un usuario a la misma
-   empresa (por ejemplo varios socios con cuentas separadas) desde el
-   panel Admin de la app.
+   cambio de administrador principal, incluso hecho por un admin. Además
+   crea la tabla `empresa_usuarios`, que permite asociar más de un usuario
+   a la misma empresa (por ejemplo varios socios con cuentas separadas)
+   desde el panel Admin de la app.
 9. (Opcional) Pegá y ejecutá [`sql/005_seed_demo_empresas.sql`](sql/005_seed_demo_empresas.sql)
    si querés que el directorio no arranque vacío: carga 17 organizaciones
    de ejemplo sin asociarlas a ningún usuario real.

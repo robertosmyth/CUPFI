@@ -8,7 +8,7 @@
 -- Supabase (por ejemplo desde la consola del navegador, sin pasar
 -- por la interfaz de la app) y:
 --   a) ponga role = 'admin' en su propio perfil (auto-escalación), o
---   b) cambie el uid de una empresa para "transferirla" a otro dueño.
+--   b) cambie el uid de una empresa para "transferirla" a otro administrador principal.
 --
 -- Solución: dos triggers BEFORE UPDATE que ignoran cualquier intento
 -- de cambiar esas dos columnas desde el cliente. A partir de ahora,

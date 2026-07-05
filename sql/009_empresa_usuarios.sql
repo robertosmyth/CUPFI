@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════
--- 1) Permitir que un admin reasigne el dueño principal de una
+-- 1) Permitir que un admin reasigne el administrador principal de una
 --    empresa (empresas.uid). Hasta ahora el trigger lo bloqueaba
 --    SIEMPRE, sin excepción para admins (a diferencia del trigger
 --    equivalente de profiles.role, que sql/004 ya había corregido).
@@ -19,7 +19,7 @@ $$ language plpgsql security definer set search_path = public;
 
 -- ═══════════════════════════════════════════════════════════════
 -- 2) Tabla de relación empresa ↔ usuario: una empresa puede tener
---    además del dueño principal (empresas.uid) otros usuarios
+--    además del administrador principal (empresas.uid) otros usuarios
 --    asociados que también pueden editarla (por ejemplo, varios
 --    socios de una misma empresa con cuentas separadas).
 -- ═══════════════════════════════════════════════════════════════
@@ -46,7 +46,7 @@ create policy "Solo admin gestiona asociaciones"
   with check (exists (select 1 from public.profiles where id = auth.uid() and role = 'admin'));
 
 -- ═══════════════════════════════════════════════════════════════
--- 3) Los usuarios asociados (no solo el dueño principal) también
+-- 3) Los usuarios asociados (no solo el administrador principal) también
 --    pueden editar / eliminar la empresa.
 -- ═══════════════════════════════════════════════════════════════
 drop policy if exists "Usuarios editan sus propias empresas" on public.empresas;
