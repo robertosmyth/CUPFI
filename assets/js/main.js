@@ -852,4 +852,40 @@ window.renderAdmin = function () {
       <td><strong>${esc(u.nombre + ' ' + (u.apellido || ''))}</strong>${isSelf ? ' <span class="badge-self">Vos</span>' : ''}</td>
       <td class="td-sm">${esc(u.email || '—')}</td>
       <td class="td-sm">${esc(u.tel || '—')}</td>
-      
+      <td class="td-sm">${orgs.filter(o => o.uid === u.id).length}</td>
+      <td><span class="role-badge ${isAdmin ? 'role-badge--admin' : 'role-badge--user'}">${isAdmin ? 'Admin' : 'Usuario'}</span></td>
+      <td>${isSelf
+        ? '<span class="muted-sm">No podés cambiar tu propio rol</span>'
+        : `<button class="btn-out" onclick="toggleUserRole('${u.id}','${isAdmin ? 'user' : 'admin'}')">${isAdmin ? 'Quitar admin' : 'Hacer admin'}</button>`}</td>
+    </tr>`;
+  }).join('');
+
+  if (!filteredUsers.length) {
+    document.getElementById('admin-users-body').innerHTML = '<tr><td colspan="6" class="empty">Sin resultados para ese criterio.</td></tr>';
+  }
+};
+
+window.toggleUserRole = async function (userId, newRole) {
+  const target = profiles.find(u => u.id === userId);
+  const name = target ? `${target.nombre} ${target.apellido}`.trim() : 'este usuario';
+  const action = newRole === 'admin' ? `¿Convertir a "${name}" en administrador?` : `¿Quitarle el rol de administrador a "${name}"?`;
+  if (!confirm(action)) return;
+  try {
+    await Auth.setUserRole(userId, newRole);
+    await refreshData();
+    renderAdmin();
+  } catch (e) {
+    alert(friendlyError(e));
+  }
+};
+
+window.deleteOrg = async function (id) {
+  if (!confirm('¿Eliminar esta empresa definitivamente?')) return;
+  try {
+    await Empresas.deleteEmpresa(id);
+    await refreshData();
+    renderAdmin();
+  } catch (e) {
+    alert(friendlyError(e));
+  }
+};
