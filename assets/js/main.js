@@ -93,6 +93,16 @@ async function init() {
       document.getElementById('af-reset').classList.add('active');
       return;
     }
+    if (event === 'USER_UPDATED' && currentProfile) {
+      // El usuario confirmó un cambio de email desde el link del correo:
+      // sincronizamos profiles.email y lo que se ve en pantalla.
+      try {
+        await Auth.syncEmailFromAuth();
+        currentProfile = await Auth.getCurrentProfile();
+        const pill = document.getElementById('user-name-pill');
+        if (pill) pill.textContent = currentProfile.nombre || currentProfile.email;
+      } catch (e) { console.error('No se pudo sincronizar el email:', e); }
+    }
     if (session && !currentProfile) {
       await enterApp();
     } else if (!session && currentProfile) {
@@ -661,6 +671,7 @@ window.openEditProfile = function () {
   document.getElementById('pf-nombre').value = currentProfile.nombre || '';
   document.getElementById('pf-apellido').value = currentProfile.apellido || '';
   document.getElementById('pf-tel').value = currentProfile.tel || '';
+  document.getElementById('pf-email').value = currentProfile.email || '';
   document.getElementById('pf-msg').style.display = 'none';
   document.getElementById('modal-perfil').classList.add('open');
 };
@@ -669,9 +680,16 @@ window.guardarPerfil = async function () {
   const nombre = document.getElementById('pf-nombre').value.trim();
   const apellido = document.getElementById('pf-apellido').value.trim();
   const tel = document.getElementById('pf-tel').value.trim();
+  const nuevoEmail = document.getElementById('pf-email').value.trim();
   const msg = document.getElementById('pf-msg');
   if (!nombre || !apellido) {
     msg.textContent = 'Nombre y apellido son obligatorios.';
+    msg.className = 'form-msg err';
+    msg.style.display = 'block';
+    return;
+  }
+  if (!nuevoEmail || !isValidEmail(nuevoEmail)) {
+    msg.textContent = 'Ingresá un email válido.';
     msg.className = 'form-msg err';
     msg.style.display = 'block';
     return;
@@ -680,12 +698,35 @@ window.guardarPerfil = async function () {
     const updated = await Auth.updateOwnProfile({ nombre, apellido, tel });
     currentProfile = { ...currentProfile, ...updated };
     document.getElementById('user-name-pill').textContent = currentProfile.nombre || currentProfile.email;
+
+    let emailPendiente = false;
+    if (nuevoEmail !== currentProfile.email) {
+      await Auth.updateEmail(nuevoEmail);
+      emailPendiente = true;
+    }
+
     await refreshData();
     renderGraduados();
-    msg.textContent = '✓ Perfil actualizado.';
+    msg.textContent = emailPendiente
+      ? '✓ Perfil actualizado. Te enviamos un correo de confirmación a ' + nuevoEmail + ': hasta que lo confirmes, seguís entrando con tu email anterior.'
+      : '✓ Perfil actualizado.';
     msg.className = 'form-msg ok';
     msg.style.display = 'block';
-    setTimeout(() => closeModal('modal-perfil'), 900);
+    if (!emailPendiente) setTimeout(() => closeModal('modal-perfil'), 900);
+  } catch (e) {
+    msg.textContent = friendlyError(e);
+    msg.className = 'form-msg err';
+    msg.style.display = 'block';
+  }
+};
+
+window.solicitarCambioPassword = async function () {
+  const msg = document.getElementById('pf-msg');
+  try {
+    await Auth.resetPasswordForEmail(currentProfile.email);
+    msg.textContent = '✓ Te enviamos un correo a ' + currentProfile.email + ' con un link para definir una nueva contraseña.';
+    msg.className = 'form-msg ok';
+    msg.style.display = 'block';
   } catch (e) {
     msg.textContent = friendlyError(e);
     msg.className = 'form-msg err';
@@ -1037,10 +1078,34 @@ function renderTags(type) {
 // ══════════════════════════════════════════════
 // ADMIN
 // ══════════════════════════════════════════════
+function renderAdminOrgsUserFilterOptions() {
+  const sel = document.getElementById('admin-filter-usuario');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">Todos los usuarios</option>' +
+    profiles.map(u => `<option value="${u.id}">${esc(u.nombre + ' ' + (u.apellido || ''))} (${esc(u.email || '')})</option>`).join('');
+  if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
+}
+
 window.renderAdmin = function () {
   if (!currentProfile || currentProfile.role !== 'admin') return;
 
-  document.getElementById('admin-orgs-body').innerHTML = orgs.map(o => `
+  renderAdminOrgsUserFilterOptions();
+  const filterUserId = document.getElementById('admin-filter-usuario').value;
+  const filterRol = document.getElementById('admin-filter-rol-usuario').value;
+  const oq = (document.getElementById('admin-search-orgs').value || '').toLowerCase();
+
+  const filteredOrgs = orgs.filter(o => {
+    if (filterUserId) {
+      if (filterRol === 'principal' && o.uid !== filterUserId) return false;
+      if (filterRol === 'asociado' && !asociaciones.some(a => a.empresa_id === o.id && a.user_id === filterUserId)) return false;
+      if (filterRol === 'cualquiera' && !esUsuarioDeEmpresa(o, filterUserId)) return false;
+    }
+    if (oq && ![o.nombre, o.cuit, o.sector].join(' ').toLowerCase().includes(oq)) return false;
+    return true;
+  });
+
+  document.getElementById('admin-orgs-count').textContent = filteredOrgs.length;
+  document.getElementById('admin-orgs-body').innerHTML = filteredOrgs.map(o => `
     <tr>
       <td>${logoOrAvatar(o, 30)}</td>
       <td><strong>${esc(o.nombre)}</strong></td>
@@ -1055,6 +1120,10 @@ window.renderAdmin = function () {
         <button class="btn-danger" onclick="deleteOrg(${o.id})" title="Eliminar empresa (esta acción no se puede deshacer)"><i class="ti ti-trash"></i></button>
       </div></td>
     </tr>`).join('');
+
+  if (!filteredOrgs.length) {
+    document.getElementById('admin-orgs-body').innerHTML = '<tr><td colspan="7" class="empty">Sin resultados para ese criterio.</td></tr>';
+  }
 
   const uq = (document.getElementById('admin-search-users').value || '').toLowerCase();
   const filteredUsers = profiles.filter(u => {

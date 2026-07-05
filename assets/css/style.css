@@ -71,7 +71,8 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:#f5f4fc;}
 .filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:1.25rem;}
 .chip{font-family:'Poppins',sans-serif;font-size:11px;padding:4px 12px;border-radius:20px;border:1px solid #ccc;background:#fff;color:var(--fi-gray);cursor:pointer;}
 .chip.active{background:var(--fi);border-color:var(--fi);color:#fff;font-weight:600;}
-.section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;}
+.section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px;}
+.admin-filter-select{min-width:180px;max-width:240px;}
 .section-title{font-size:14px;font-weight:600;color:var(--fi);}
 .count-pill{font-size:11px;background:var(--fi-light2);color:var(--fi);padding:2px 10px;border-radius:20px;font-weight:600;}
 
@@ -313,3 +314,6 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:#f5f4fc;}
 .asig-item{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;background:#f4f4f4;border-radius:6px;margin-bottom:6px;font-size:13px;}
 .asig-item .btn-danger.btn-sm{padding:3px 8px;font-size:11px;}
 .btn-danger.btn-sm{padding:3px 8px;font-size:11px;}
+
+/* separador simple dentro del modal de perfil, entre datos y contraseña */
+.pf-divider{height:1px;background:#e5e5e5;margin:14px 0;}

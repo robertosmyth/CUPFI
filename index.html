@@ -7,7 +7,7 @@
 <meta name="description" content="Plataforma de vinculación entre graduados y empresas de la Facultad de Ingeniería de la UNLZ.">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
-<link rel="stylesheet" href="assets/css/style.css">
+<link rel="stylesheet" href="assets/css/style.css?v=3">
 </head>
 <body>
 
@@ -294,6 +294,20 @@
     <!-- ADMIN -->
     <div class="screen" id="screen-admin">
       <div class="admin-section-title"><i class="ti ti-building"></i> Gestión de empresas <span class="admin-badge">Admin</span></div>
+      <div class="section-header">
+        <div class="search-row flex-grow mb-0">
+          <input type="text" id="admin-search-orgs" placeholder="Buscar empresa por nombre, CUIT o sector..." oninput="renderAdmin()">
+        </div>
+        <select class="form-input admin-filter-select" id="admin-filter-usuario" onchange="renderAdmin()">
+          <option value="">Todos los usuarios</option>
+        </select>
+        <select class="form-input admin-filter-select" id="admin-filter-rol-usuario" onchange="renderAdmin()">
+          <option value="cualquiera">Admin. principal o asociado</option>
+          <option value="principal">Solo administrador principal</option>
+          <option value="asociado">Solo usuario asociado</option>
+        </select>
+        <span class="count-pill" id="admin-orgs-count">0</span>
+      </div>
       <div class="table-wrap">
         <table class="admin-table">
           <thead><tr><th>Logo</th><th>Empresa</th><th>CUIT</th><th>Sector</th><th>Referente</th><th>Ubicación</th><th>Acciones</th></tr></thead>
@@ -360,11 +374,22 @@
     <div class="form-group"><label class="form-label">Nombre *</label><input class="form-input" id="pf-nombre" type="text"></div>
     <div class="form-group"><label class="form-label">Apellido *</label><input class="form-input" id="pf-apellido" type="text"></div>
     <div class="form-group"><label class="form-label">Teléfono</label><input class="form-input" id="pf-tel" type="text" placeholder="+54 11 1234-5678"></div>
+    <div class="form-group">
+      <label class="form-label">Email *</label>
+      <input class="form-input" id="pf-email" type="email">
+      <p class="hint-text hint-tight">Si lo cambiás, te enviamos un correo de confirmación a la nueva dirección antes de que se aplique.</p>
+    </div>
     <div class="action-row">
       <button class="btn-prim" onclick="guardarPerfil()"><i class="ti ti-check"></i> Guardar</button>
       <button class="btn-out" onclick="closeModal('modal-perfil')">Cancelar</button>
     </div>
     <div class="form-msg" id="pf-msg"></div>
+    <div class="pf-divider"></div>
+    <div class="form-group">
+      <label class="form-label">Contraseña</label>
+      <p class="hint-text hint-tight">Te enviamos un correo con un link para definir una contraseña nueva.</p>
+      <button class="btn-out" onclick="solicitarCambioPassword()"><i class="ti ti-lock"></i> Cambiar contraseña por email</button>
+    </div>
   </div>
 </div>
 
@@ -396,6 +421,6 @@
   </div>
 </div>
 
-<script type="module" src="assets/js/main.js"></script>
+<script type="module" src="assets/js/main.js?v=3"></script>
 </body>
 </html>

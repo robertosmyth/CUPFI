@@ -105,3 +105,33 @@ export async function updatePassword(newPassword) {
   const { error } = await supabase.auth.updateUser({ password: newPassword });
   if (error) throw error;
 }
+
+// Inicia un cambio de email: Supabase le manda un correo de confirmación a
+// la dirección NUEVA (y, si el proyecto tiene activado "Secure email
+// change", también uno a la dirección anterior). El email real de
+// auth.users no cambia hasta que el usuario confirma desde ese link.
+export async function updateEmail(newEmail) {
+  const supabase = await getSupabase();
+  const { error } = await supabase.auth.updateUser(
+    { email: newEmail },
+    { emailRedirectTo: window.location.origin + window.location.pathname }
+  );
+  if (error) throw error;
+}
+
+// Sincroniza public.profiles.email con el email confirmado en auth.users.
+// Se usa después del evento 'USER_UPDATED' (el usuario volvió de confirmar
+// un cambio de email por correo).
+export async function syncEmailFromAuth() {
+  const supabase = await getSupabase();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+  const { data, error } = await supabase
+    .from('profiles')
+    .update({ email: user.email })
+    .eq('id', user.id)
+    .select()
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
