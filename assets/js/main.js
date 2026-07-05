@@ -18,6 +18,7 @@ let orgs = [];
 let profiles = [];
 let asociaciones = []; // filas de empresa_usuarios (ver sql/009)
 let editingId = null;
+let editReturnScreen = null; // pantalla a la que volver después de editar (no de agregar)
 let currentLogoFile = null; // File real seleccionado (se sube recién al guardar)
 let currentLogoUrl = null;  // URL ya existente (modo edición) o recién subida
 
@@ -753,6 +754,9 @@ window.startEdit = function (id) {
   const o = orgs.find(x => x.id === id);
   if (!o) return;
 
+  const activeScreen = document.querySelector('.screen.active');
+  editReturnScreen = activeScreen ? activeScreen.id.replace('screen-', '') : null;
+
   editingId = id;
   currentLogoFile = null;
   currentLogoUrl = o.logo || null;
@@ -788,6 +792,8 @@ window.startEdit = function (id) {
 };
 
 window.cancelEdit = function () {
+  const wasEditing = !!editingId;
+  const returnTo = editReturnScreen;
   editingId = null;
   currentLogoFile = null;
   currentLogoUrl = null;
@@ -795,6 +801,7 @@ window.cancelEdit = function () {
   document.getElementById('form-screen-title').textContent = 'Agregar empresa u organización';
   document.getElementById('form-btn-label').textContent = 'Registrar empresa';
   resetForm();
+  if (wasEditing) showScreen(returnTo || 'directorio');
 };
 
 function resetForm() {
@@ -868,17 +875,29 @@ window.guardarOrg = async function () {
     if (editId) {
       await Empresas.updateEmpresa(editId, data);
       showFormMsg('✓ Empresa actualizada y guardada correctamente.', 'ok');
-      editingId = null;
-      document.getElementById('f-edit-id').value = '';
-      document.getElementById('form-screen-title').textContent = 'Agregar empresa u organización';
-      document.getElementById('form-btn-label').textContent = 'Registrar empresa';
     } else {
       await Empresas.createEmpresa(currentProfile.id, data);
       showFormMsg('✓ Empresa registrada y guardada correctamente. Podés verla en "Mis empresas".', 'ok');
     }
 
     await refreshData();
-    resetForm();
+
+    if (editId) {
+      // Dejamos el mensaje de éxito visible un momento antes de limpiar el
+      // formulario y volver a la pantalla desde donde se editó (en vez de
+      // tirar al usuario al formulario de alta vacío sin aviso).
+      const returnTo = editReturnScreen;
+      editingId = null;
+      document.getElementById('f-edit-id').value = '';
+      setTimeout(() => {
+        resetForm();
+        document.getElementById('form-screen-title').textContent = 'Agregar empresa u organización';
+        document.getElementById('form-btn-label').textContent = 'Registrar empresa';
+        showScreen(returnTo || 'directorio');
+      }, 1300);
+    } else {
+      setTimeout(() => resetForm(), 1300);
+    }
   } catch (e) {
     showFormMsg(friendlyError(e), 'err');
   } finally {
