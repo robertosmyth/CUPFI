@@ -101,7 +101,16 @@ CUPFI/
 ## Cuenta de usuario
 
 - Cada graduado puede **editar su propio perfil** (nombre, apellido,
-  teléfono) desde el botón de lápiz junto a su nombre en la barra superior.
+  teléfono, email) desde el botón de lápiz junto a su nombre en la barra
+  superior. Si cambia el email, Supabase le manda un correo de
+  confirmación a la dirección nueva; hasta que lo confirma, el login
+  sigue siendo con el email anterior (esto depende de la opción
+  "Confirm email change" en Authentication → Providers → Email; si está
+  activada, según la versión del proyecto puede pedir confirmar también
+  desde la casilla anterior).
+- Desde el mismo modal de perfil hay un botón **"Cambiar contraseña por
+  email"**: manda un correo con un link para definir una contraseña
+  nueva, igual que la recuperación de contraseña del login.
 - Hay **recuperación de contraseña** ("¿Olvidaste tu contraseña?" en la
   pantalla de login): envía un email con un link que trae de vuelta a la
   app para definir una contraseña nueva. Usa el mismo mecanismo nativo de
