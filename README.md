@@ -162,15 +162,21 @@ completa falta correr algunas migraciones chicas, en este orden:
    crea la tabla `empresa_usuarios`, que permite asociar más de un usuario
    a la misma empresa (por ejemplo varios socios con cuentas separadas)
    desde el panel Admin de la app.
-9. (Opcional) Pegá y ejecutá [`sql/005_seed_demo_empresas.sql`](sql/005_seed_demo_empresas.sql)
+9. Pegá y ejecutá [`sql/010_unique_profile_constraints.sql`](sql/010_unique_profile_constraints.sql).
+   Impide que existan dos usuarios con el mismo nombre+apellido, el mismo
+   email o el mismo teléfono móvil (índices únicos + validación previa
+   desde la app). Si tu proyecto ya tiene usuarios cargados con datos
+   repetidos, revisá eso antes de correrlo o la creación de los índices
+   va a fallar.
+10. (Opcional) Pegá y ejecutá [`sql/005_seed_demo_empresas.sql`](sql/005_seed_demo_empresas.sql)
    si querés que el directorio no arranque vacío: carga 17 organizaciones
    de ejemplo sin asociarlas a ningún usuario real.
-10. Registrate normalmente desde la app (pestaña "Registrarse"). La
+11. Registrate normalmente desde la app (pestaña "Registrarse"). La
     **primera** cuenta de un proyecto nuevo no es admin automáticamente:
     hay que asignarle el rol manualmente (paso siguiente). A partir de ahí,
     ese primer admin puede promover a cualquier otro usuario desde la propia
     app, sin volver a tocar la base de datos.
-11. Para convertirte en administrador la primera vez, en el **Table Editor**
+12. Para convertirte en administrador la primera vez, en el **Table Editor**
     de Supabase abrí la tabla `profiles` y cambiá tu fila: `role = admin`. O
     corré en el SQL Editor:
     ```sql

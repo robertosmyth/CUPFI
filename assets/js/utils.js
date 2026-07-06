@@ -60,8 +60,18 @@ export function overlap(a, b) {
 export function friendlyError(error) {
   if (!error) return 'Ocurrió un error inesperado.';
   const msg = error.message || String(error);
+  // Mensajes propios del trigger de sql/010_unique_profile_constraints.sql
+  // (backstop del lado del servidor si dos altas/ediciones chocan al mismo
+  // tiempo; el chequeo normal se hace antes, con checkProfileDuplicates).
+  if (/DUPLICATE_NOMBRE_APELLIDO/i.test(msg)) return 'Ya existe un usuario registrado con ese nombre y apellido.';
+  if (/DUPLICATE_EMAIL/i.test(msg)) return 'Ya existe un usuario registrado con ese email.';
+  if (/DUPLICATE_TEL/i.test(msg)) return 'Ya existe un usuario registrado con ese teléfono móvil.';
+  if (/Database error saving new user/i.test(msg)) return 'Ya existe un usuario registrado con ese nombre, apellido, email o teléfono.';
   if (error.code === '23505' || /duplicate key/i.test(msg)) {
     if (/cuit/i.test(msg)) return 'Ya existe una empresa registrada con ese CUIT.';
+    if (/nombre_apellido/i.test(msg)) return 'Ya existe un usuario registrado con ese nombre y apellido.';
+    if (/profiles_unique_email/i.test(msg)) return 'Ya existe un usuario registrado con ese email.';
+    if (/profiles_unique_tel/i.test(msg)) return 'Ya existe un usuario registrado con ese teléfono móvil.';
     return 'Ese valor ya existe y debe ser único.';
   }
   if (/Invalid login credentials/i.test(msg)) return 'Email o contraseña incorrectos.';

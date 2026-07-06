@@ -3,6 +3,24 @@
 // ══════════════════════════════════════════════
 import { getSupabase } from './supabaseClient.js';
 
+// Chequea ANTES de registrarse o guardar el perfil si nombre+apellido,
+// email o teléfono ya están usados por otra cuenta. Llama a una función
+// de la base (security definer) porque RLS no deja leer profiles sin
+// sesión (necesario para validar esto durante el registro, donde
+// todavía no hay usuario logueado). Ver sql/010_unique_profile_constraints.sql.
+export async function checkProfileDuplicates({ nombre, apellido, tel, email, excludeId } = {}) {
+  const supabase = await getSupabase();
+  const { data, error } = await supabase.rpc('check_profile_duplicates', {
+    p_nombre: nombre ?? null,
+    p_apellido: apellido ?? null,
+    p_tel: tel ?? null,
+    p_email: email ?? null,
+    p_exclude_id: excludeId ?? null,
+  });
+  if (error) throw error;
+  return data || { nombre_apellido: false, email: false, tel: false };
+}
+
 export async function signUp({ nombre, apellido, email, tel, password }) {
   const supabase = await getSupabase();
   const { data, error } = await supabase.auth.signUp({
@@ -41,7 +59,19 @@ export async function onAuthStateChange(cb) {
   return supabase.auth.onAuthStateChange((event, session) => cb(event, session));
 }
 
-// Perfil (public.profiles) del usuario autenticado, con su email real
+// Perfil (public.profiles) del usuario autenticado, con su email real.
+//
+// BUG arreglado acá: antes se confiaba en cachear profiles.email
+// únicamente cuando el evento 'USER_UPDATED' se agarraba al vuelo en
+// la pestaña donde se pidió el cambio (ver onAuthStateChange en
+// main.js). En la práctica el link de confirmación casi siempre se
+// abre desde el mail en OTRA pestaña/dispositivo, así que ese evento
+// nunca llegaba a la sesión original y profiles.email se quedaba
+// para siempre con el valor viejo aunque el usuario ya hubiera
+// confirmado el cambio en auth.users (podía iniciar sesión con el
+// email nuevo, pero la app seguía mostrando/usando el viejo). Acá
+// comparamos siempre contra el email real de auth.users (fuente de
+// verdad) y, si no coincide, lo sincronizamos en el momento.
 export async function getCurrentProfile() {
   const supabase = await getSupabase();
   const { data: { user } } = await supabase.auth.getUser();
@@ -49,6 +79,14 @@ export async function getCurrentProfile() {
   const { data, error } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle();
   if (error) throw error;
   if (!data) return { id: user.id, nombre: '', apellido: '', tel: '', role: 'user', email: user.email };
+  if (user.email && data.email !== user.email) {
+    try {
+      const synced = await syncEmailFromAuth();
+      if (synced) return { ...synced, email: synced.email || user.email };
+    } catch (e) {
+      console.error('No se pudo sincronizar el email con auth.users:', e);
+    }
+  }
   return { ...data, email: data.email || user.email };
 }
 

@@ -183,6 +183,16 @@ window.doRegister = async function () {
 
   setBusy('r-btn', true);
   try {
+    // No puede haber dos usuarios con el mismo nombre+apellido, email o
+    // teléfono móvil (ver sql/010_unique_profile_constraints.sql). Se
+    // valida acá antes de crear la cuenta para dar un mensaje claro en
+    // vez del genérico que devolvería Supabase Auth si el trigger de la
+    // base lo rechazara después.
+    const dup = await Auth.checkProfileDuplicates({ nombre, apellido, tel, email });
+    if (dup.nombre_apellido) { showAuthMsg('r-msg', 'Ya existe un usuario registrado con ese nombre y apellido.', 'err'); return; }
+    if (dup.email) { showAuthMsg('r-msg', 'Ya existe una cuenta con ese email.', 'err'); return; }
+    if (dup.tel) { showAuthMsg('r-msg', 'Ya existe un usuario registrado con ese teléfono móvil.', 'err'); return; }
+
     const data = await Auth.signUp({ nombre, apellido, email, tel, password: pass });
     if (data.session) {
       await enterApp();
@@ -695,6 +705,13 @@ window.guardarPerfil = async function () {
     return;
   }
   try {
+    // Mismo chequeo de unicidad que en el registro (nombre+apellido,
+    // email, teléfono), excluyendo el propio perfil.
+    const dup = await Auth.checkProfileDuplicates({ nombre, apellido, tel, email: nuevoEmail, excludeId: currentProfile.id });
+    if (dup.nombre_apellido) throw new Error('Ya existe otro usuario con ese nombre y apellido.');
+    if (dup.email) throw new Error('Ya existe otro usuario con ese email.');
+    if (dup.tel) throw new Error('Ya existe otro usuario con ese teléfono móvil.');
+
     const updated = await Auth.updateOwnProfile({ nombre, apellido, tel });
     currentProfile = { ...currentProfile, ...updated };
     document.getElementById('user-name-pill').textContent = currentProfile.nombre || currentProfile.email;
