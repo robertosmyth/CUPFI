@@ -77,20 +77,33 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function init() {
-  const session = await Auth.getSession();
-  if (session) {
-    await enterApp();
-  } else {
-    showAuthScreen();
-  }
+  // BUG arreglado acá: antes esta función primero pedía la sesión y
+  // recién DESPUÉS se suscribía a onAuthStateChange. El problema es que
+  // cuando la página carga desde un link de "restablecer contraseña"
+  // (o de confirmación de email), Supabase procesa el token de la URL
+  // apenas se crea el cliente y dispara el evento (PASSWORD_RECOVERY /
+  // USER_UPDATED) casi de inmediato — mucho antes de que termine
+  // getSession()+enterApp(), que hacen varias vueltas a la base. Para
+  // cuando nos suscribíamos, el evento ya se había perdido. En el caso
+  // de PASSWORD_RECOVERY eso significaba que el link SÍ dejaba una
+  // sesión válida, así que el usuario terminaba entrando directo a la
+  // app (o viendo el login si no había sesión) en vez del formulario
+  // para definir la contraseña nueva: "nunca dejaba cambiar la
+  // contraseña". Ahora la suscripción se hace antes de tocar la sesión.
+  let recoveryInProgress = false;
+  const showPasswordRecoveryForm = () => {
+    recoveryInProgress = true;
+    document.getElementById('auth-wrap').style.display = 'flex';
+    document.getElementById('main-app').style.display = 'none';
+    document.querySelectorAll('.auth-tab').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
+    document.getElementById('af-reset').classList.add('active');
+  };
+
   Auth.onAuthStateChange(async (event, session) => {
     if (event === 'PASSWORD_RECOVERY') {
       // El usuario volvió del link de "restablecer contraseña" del email.
-      document.getElementById('auth-wrap').style.display = 'flex';
-      document.getElementById('main-app').style.display = 'none';
-      document.querySelectorAll('.auth-tab').forEach(el => el.classList.remove('active'));
-      document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
-      document.getElementById('af-reset').classList.add('active');
+      showPasswordRecoveryForm();
       return;
     }
     if (event === 'USER_UPDATED' && currentProfile) {
@@ -102,7 +115,9 @@ async function init() {
         const pill = document.getElementById('user-name-pill');
         if (pill) pill.textContent = currentProfile.nombre || currentProfile.email;
       } catch (e) { console.error('No se pudo sincronizar el email:', e); }
+      return;
     }
+    if (recoveryInProgress) return; // no pisar el formulario de reset
     if (session && !currentProfile) {
       await enterApp();
     } else if (!session && currentProfile) {
@@ -110,6 +125,14 @@ async function init() {
       showAuthScreen();
     }
   }).catch(e => console.error('No se pudo suscribir a cambios de sesión:', e));
+
+  const session = await Auth.getSession();
+  if (recoveryInProgress) return; // el listener de arriba ya mostró el form de reset
+  if (session) {
+    await enterApp();
+  } else {
+    showAuthScreen();
+  }
 }
 
 function wireStaticEvents() {
