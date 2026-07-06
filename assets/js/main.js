@@ -13,6 +13,7 @@ import { esc, ini, normCuit, isValidCuit, isValidEmail, isValidUrl, buildAddress
 const tags = { ofertas: [], instalaciones: [], 'needs-uncovered': [], 'needs-covered': [] };
 const tagCls = { ofertas: 'rt-o', instalaciones: 'rt-i', 'needs-uncovered': 'rt-nu', 'needs-covered': 'rt-nc' };
 let activeFilter = 'todos';
+let activeVinFilter = 'todos'; // 'todos' | 'strong' | 'weak', ver renderVin()
 let currentProfile = null;
 let orgs = [];
 let profiles = [];
@@ -1037,12 +1038,42 @@ window.guardarUbicacion = async function () {
 // ══════════════════════════════════════════════
 // VINCULACIÓN
 // ══════════════════════════════════════════════
+window.setVinFilter = function (el, val) {
+  // Escopado a #screen-vinculacion para no interferir con los chips de
+  // filtro del Directorio (que usan la misma clase .chip).
+  document.querySelectorAll('#screen-vinculacion .chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  activeVinFilter = val;
+  renderVin();
+};
+
 window.renderVin = function () {
-  const grouped = groupMatchesByPair(allMatches(orgs));
+  const totalGrouped = groupMatchesByPair(allMatches(orgs));
+  const q = (document.getElementById('search-vin').value || '').toLowerCase();
+
+  let grouped = totalGrouped;
+  if (activeVinFilter === 'strong') {
+    grouped = grouped.filter(g => g.items.some(it => it.strength === 'strong'));
+  } else if (activeVinFilter === 'weak') {
+    grouped = grouped.filter(g => g.items.every(it => it.strength !== 'strong'));
+  }
+  if (q) {
+    grouped = grouped.filter(g => {
+      const hay = [
+        g.seeker.nombre, g.seeker.referente, g.seeker.sector,
+        g.provider.nombre, g.provider.referente, g.provider.sector,
+        ...g.items.map(it => it.need), ...g.items.map(it => it.offer),
+      ].join(' ').toLowerCase();
+      return hay.includes(q);
+    });
+  }
+
   document.getElementById('vin-count').textContent = grouped.length;
   const list = document.getElementById('vin-list');
   if (!grouped.length) {
-    list.innerHTML = '<div class="empty"><i class="ti ti-arrows-exchange"></i>No se detectaron vinculaciones aún.<br>Registrá organizaciones con servicios y necesidades para que el sistema las cruce.</div>';
+    list.innerHTML = totalGrouped.length
+      ? '<div class="empty"><i class="ti ti-arrows-exchange"></i>Sin resultados para ese criterio.</div>'
+      : '<div class="empty"><i class="ti ti-arrows-exchange"></i>No se detectaron vinculaciones aún.<br>Registrá organizaciones con servicios y necesidades para que el sistema las cruce.</div>';
     return;
   }
   list.innerHTML = grouped.map(g => `

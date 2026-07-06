@@ -165,6 +165,14 @@
         <span class="count-pill" id="vin-count">0</span>
       </div>
       <p class="hint-text">Organizaciones cuyas <strong>necesidades sin cubrir</strong> coinciden con <strong>servicios o productos</strong> de otra organización de la red. Las marcadas como "Coincidencia exacta" son más confiables que las de "Posible coincidencia".</p>
+      <div class="search-row">
+        <input type="text" id="search-vin" placeholder="Buscar por empresa, graduado, necesidad o servicio..." oninput="renderVin()">
+      </div>
+      <div class="filters">
+        <button class="chip active" onclick="setVinFilter(this,'todos')">Todos</button>
+        <button class="chip" onclick="setVinFilter(this,'strong')">Coincidencia exacta</button>
+        <button class="chip" onclick="setVinFilter(this,'weak')">Posible coincidencia</button>
+      </div>
       <div class="vin-list" id="vin-list"></div>
     </div>
 
