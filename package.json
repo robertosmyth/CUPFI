@@ -1,0 +1,25 @@
+{
+  "name": "cupfi",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Red de Vinculación Empresarial FI-UNLZ",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.110.5",
+    "@tabler/icons-webfont": "^3.44.0",
+    "leaflet": "^1.9.4"
+  },
+  "devDependencies": {
+    "@types/leaflet": "^1.9.21",
+    "typescript": "^7.0.2",
+    "vite": "^8.1.4",
+    "vitest": "^4.1.10"
+  }
+}

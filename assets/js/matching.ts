@@ -15,33 +15,34 @@
 // graduado con varias empresas no necesita que el sistema le sugiera
 // vincular sus propias empresas entre ellas.
 // ══════════════════════════════════════════════
-import { overlap, normalizeTagKey } from './utils.js';
+import { overlap, normalizeTagKey } from './utils.ts';
+import type { Empresa, MatchResult, MatchForOrg, MatchGroup } from './types.ts';
 
 // Considera "mismo administrador" si comparten al menos un usuario asociado
 // (administrador principal o alguno de los usuarios adicionales agregados por
-// un admin, ver sql/009_empresa_usuarios.sql). Si a.usuarios/b.usuarios
+// un admin, ver sql/historial/009_empresa_usuarios.sql). Si a.usuarios/b.usuarios
 // no están presentes (por compatibilidad), cae al chequeo simple por uid.
-function isSameOwner(a, b) {
+function isSameOwner(a: Empresa, b: Empresa): boolean {
   const au = a.usuarios || (a.uid ? [a.uid] : []);
   const bu = b.usuarios || (b.uid ? [b.uid] : []);
   if (!au.length || !bu.length) return false;
   return au.some(id => bu.includes(id));
 }
 
-function isStrongMatch(need, offer) {
+function isStrongMatch(need: string, offer: string): boolean {
   const nk = normalizeTagKey(need);
   const ok = normalizeTagKey(offer);
   return !!nk && nk === ok;
 }
 
-export function allMatches(orgs) {
-  const strong = [];
-  const weak = [];
+export function allMatches(orgs: Empresa[]): MatchResult[] {
+  const strong: MatchResult[] = [];
+  const weak: MatchResult[] = [];
 
   for (const s of orgs) {
     for (const n of (s.needsUncovered || [])) {
       let foundStrongForThisNeed = false;
-      const weakCandidates = [];
+      const weakCandidates: MatchResult[] = [];
 
       for (const p of orgs) {
         if (p.id === s.id) continue;
@@ -64,14 +65,14 @@ export function allMatches(orgs) {
   return [...strong, ...weak];
 }
 
-export function findMatchesFor(orgs, org) {
+export function findMatchesFor(orgs: Empresa[], org: Empresa): MatchForOrg[] {
   return allMatches(orgs)
     .filter(m => m.seeker.id === org.id)
     .map(m => ({ org: m.provider, need: m.need, offer: m.offer, strength: m.strength }));
 }
 
-export function countMatches(orgs) {
-  const seen = new Set();
+export function countMatches(orgs: Empresa[]): number {
+  const seen = new Set<string>();
   return allMatches(orgs).filter(m => {
     const k = `${m.seeker.id}-${m.provider.id}`;
     if (seen.has(k)) return false;
@@ -84,14 +85,14 @@ export function countMatches(orgs) {
 // que la pantalla de Vinculación muestre una sola tarjeta por par con
 // todas las necesidades/ofertas que calzan, en vez de repetir el par
 // una vez por cada coincidencia individual.
-export function groupMatchesByPair(matches) {
-  const map = new Map();
+export function groupMatchesByPair(matches: MatchResult[]): MatchGroup[] {
+  const map = new Map<string, MatchGroup>();
   for (const m of matches) {
     const key = `${m.seeker.id}-${m.provider.id}`;
     if (!map.has(key)) {
       map.set(key, { seeker: m.seeker, provider: m.provider, items: [] });
     }
-    map.get(key).items.push({ need: m.need, offer: m.offer, strength: m.strength });
+    map.get(key)!.items.push({ need: m.need, offer: m.offer, strength: m.strength });
   }
   return [...map.values()];
 }

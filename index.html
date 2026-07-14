@@ -6,8 +6,7 @@
 <title>Red de Vinculación Empresarial – FI-UNLZ</title>
 <meta name="description" content="Plataforma de vinculación entre graduados y empresas de la Facultad de Ingeniería de la UNLZ.">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
-<link rel="stylesheet" href="assets/css/style.css?v=3">
+<link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
 
@@ -55,7 +54,7 @@
       <input class="fi" type="email" id="r-email" placeholder="tu@email.com">
       <label class="fl">Teléfono móvil *</label>
       <input class="fi" type="tel" id="r-tel" placeholder="+54 11 1234-5678">
-      <label class="fl">Contraseña * <span class="label-note">(mín. 6 caracteres)</span></label>
+      <label class="fl">Contraseña * <span class="label-note">(mín. 8 caracteres)</span></label>
       <input class="fi" type="password" id="r-pass" placeholder="••••••••">
       <label class="fl">Confirmar contraseña *</label>
       <input class="fi" type="password" id="r-pass2" placeholder="••••••••" onkeydown="if(event.key==='Enter')doRegister()">
@@ -72,7 +71,7 @@
     </div>
     <div class="auth-form" id="af-reset">
       <div class="hint">Ingresá tu nueva contraseña.</div>
-      <label class="fl">Nueva contraseña <span class="label-note">(mín. 6 caracteres)</span></label>
+      <label class="fl">Nueva contraseña <span class="label-note">(mín. 8 caracteres)</span></label>
       <input class="fi" type="password" id="rp-pass" placeholder="••••••••">
       <label class="fl">Confirmar contraseña</label>
       <input class="fi" type="password" id="rp-pass2" placeholder="••••••••" onkeydown="if(event.key==='Enter')doResetPassword()">
@@ -429,6 +428,6 @@
   </div>
 </div>
 
-<script type="module" src="assets/js/main.js?v=3"></script>
+<script type="module" src="assets/js/main.ts"></script>
 </body>
 </html>

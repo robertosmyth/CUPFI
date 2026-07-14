@@ -2,35 +2,102 @@
 // CUPFI · Red de Vinculación Empresarial FI-UNLZ
 // App principal: conecta la UI con Supabase (auth real + datos reales)
 // ══════════════════════════════════════════════
-import * as Auth from './auth.js';
-import * as Empresas from './empresas.js';
-import { allMatches, findMatchesFor, countMatches, groupMatchesByPair } from './matching.js';
-import { esc, ini, normCuit, isValidCuit, isValidEmail, isValidUrl, buildAddress, friendlyError, normalizeTagKey } from './utils.js';
+import '@tabler/icons-webfont/dist/tabler-icons.min.css';
+import type * as LeafletTypes from 'leaflet';
+import * as Auth from './auth.ts';
+import * as Empresas from './empresas.ts';
+import { allMatches, findMatchesFor, countMatches, groupMatchesByPair } from './matching.ts';
+import { esc, ini, normCuit, isValidCuit, isValidEmail, isValidUrl, buildAddress, friendlyError, normalizeTagKey } from './utils.ts';
+import type { Empresa, EmpresaUsuarioRow, Profile } from './types.ts';
+
+// Handlers expuestos a los `onclick`/`onchange`/`onkeydown` inline del HTML
+// (ver index.html). Se mantiene ese patrón tal cual estaba en JS: es un
+// sitio sin build de componentes, así que exponer funciones en `window` es
+// más simple que reescribir cada listener con addEventListener. Declararlas
+// acá le da tipado a cada asignación `window.foo = ...` de más abajo (y
+// tipa por contexto los parámetros de esas funciones, sin tener que
+// repetirlos dentro de cada una).
+declare global {
+  interface Window {
+    authTab(t: string): void;
+    doLogin(): Promise<void>;
+    doRegister(): Promise<void>;
+    doLogout(): Promise<void>;
+    openForgotPassword(): void;
+    doForgotPassword(): Promise<void>;
+    doResetPassword(): Promise<void>;
+    showScreen(name: string): void;
+    setFilter(el: HTMLElement, val: string): void;
+    renderDir(): void;
+    renderGraduados(): void;
+    renderMapa(): Promise<void>;
+    _openDetail(id: number): void;
+    renderMias(): void;
+    openDetail(id: number): void;
+    closeModal(id: string): void;
+    openEditProfile(): void;
+    guardarPerfil(): Promise<void>;
+    solicitarCambioPassword(): Promise<void>;
+    previewLogo(): void;
+    clearLogo(): void;
+    checkCuit(): void;
+    startEdit(id: number): void;
+    cancelEdit(): void;
+    guardarOrg(): Promise<void>;
+    openEditUbicacion(id: number): void;
+    guardarUbicacion(): Promise<void>;
+    setVinFilter(el: HTMLElement, val: string): void;
+    renderVin(): void;
+    addTag(event: KeyboardEvent, type: TagType): void;
+    quickAddTag(type: TagType, idx: number): void;
+    removeTag(type: TagType, idx: number): void;
+    renderAdmin(): void;
+    toggleUserRole(userId: string, newRole: string): Promise<void>;
+    deleteOrg(id: number): Promise<void>;
+    openAsignarUsuarios(empresaId: number): void;
+    cambiarDuenoEmpresa(): Promise<void>;
+    agregarUsuarioAEmpresa(): Promise<void>;
+    quitarUsuarioDeEmpresa(empresaId: number, userId: string): Promise<void>;
+  }
+}
+
+// Cast corto para document.getElementById: el resto del archivo confía en
+// que los ids existen en el HTML (igual que la versión JS original), así
+// que esto solo le da el tipo correcto al resultado en vez de agregar
+// chequeos de null en cada línea.
+const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
+const $input = (id: string) => $<HTMLInputElement>(id);
+const $select = (id: string) => $<HTMLSelectElement>(id);
+const $textarea = (id: string) => $<HTMLTextAreaElement>(id);
+const $img = (id: string) => $<HTMLImageElement>(id);
+const $button = (id: string) => $<HTMLButtonElement>(id);
 
 // ══════════════════════════════════════════════
 // ESTADO GLOBAL (en memoria; los datos reales viven en Supabase)
 // ══════════════════════════════════════════════
-const tags = { ofertas: [], instalaciones: [], 'needs-uncovered': [], 'needs-covered': [] };
-const tagCls = { ofertas: 'rt-o', instalaciones: 'rt-i', 'needs-uncovered': 'rt-nu', 'needs-covered': 'rt-nc' };
+type TagType = 'ofertas' | 'instalaciones' | 'needs-uncovered' | 'needs-covered';
+
+const tags: Record<TagType, string[]> = { ofertas: [], instalaciones: [], 'needs-uncovered': [], 'needs-covered': [] };
+const tagCls: Record<TagType, string> = { ofertas: 'rt-o', instalaciones: 'rt-i', 'needs-uncovered': 'rt-nu', 'needs-covered': 'rt-nc' };
 let activeFilter = 'todos';
-let activeVinFilter = 'todos'; // 'todos' | 'strong' | 'weak', ver renderVin()
-let currentProfile = null;
-let orgs = [];
-let profiles = [];
-let asociaciones = []; // filas de empresa_usuarios (ver sql/009)
-let editingId = null;
-let editReturnScreen = null; // pantalla a la que volver después de editar (no de agregar)
-let currentLogoFile = null; // File real seleccionado (se sube recién al guardar)
-let currentLogoUrl = null;  // URL ya existente (modo edición) o recién subida
+let activeVinFilter: 'todos' | 'strong' | 'weak' = 'todos';
+let currentProfile: Profile | null = null;
+let orgs: Empresa[] = [];
+let profiles: Profile[] = [];
+let asociaciones: EmpresaUsuarioRow[] = []; // filas de empresa_usuarios (ver sql/historial/009)
+let editingId: number | null = null;
+let editReturnScreen: string | null = null; // pantalla a la que volver después de editar (no de agregar)
+let currentLogoFile: File | null = null; // File real seleccionado (se sube recién al guardar)
+let currentLogoUrl: string | null = null;  // URL ya existente (modo edición) o recién subida
 
 // Mapa
-let leafletMap = null;
-let mapMarkers = [];
-let leafletReady = false;
+let leafletMap: LeafletTypes.Map | null = null;
+let mapMarkers: LeafletTypes.Marker[] = [];
+let leafletModule: typeof LeafletTypes | null = null;
 
 // Categorías sugeridas para servicios/productos y necesidades: compartir
 // el mismo vocabulario entre "ofertas" y "necesidades" es lo que permite
-// que el motor de vinculación (matching.js) encuentre coincidencias
+// que el motor de vinculación (matching.ts) encuentre coincidencias
 // exactas y confiables, además de las aproximadas por palabras.
 const CATEGORIAS_SERVICIOS = [
   'Mecanizado de piezas', 'Diseño eléctrico', 'Diseño mecánico', 'Ensayos de materiales',
@@ -54,7 +121,7 @@ const SECTORES = [
   'Minería', 'Energía', 'Software / TI', 'Logística', 'Agroindustria',
   'Salud', 'Educación', 'Ferroviario', 'Naval / Portuario', 'Institucional',
 ];
-const QUICK_TAG_SOURCES = {
+const QUICK_TAG_SOURCES: Record<TagType, string[]> = {
   ofertas: CATEGORIAS_SERVICIOS,
   instalaciones: CATEGORIAS_INSTALACIONES,
   'needs-uncovered': CATEGORIAS_SERVICIOS,
@@ -77,7 +144,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
-async function init() {
+async function init(): Promise<void> {
   // BUG arreglado acá: antes esta función primero pedía la sesión y
   // recién DESPUÉS se suscribía a onAuthStateChange. El problema es que
   // cuando la página carga desde un link de "restablecer contraseña"
@@ -94,11 +161,11 @@ async function init() {
   let recoveryInProgress = false;
   const showPasswordRecoveryForm = () => {
     recoveryInProgress = true;
-    document.getElementById('auth-wrap').style.display = 'flex';
-    document.getElementById('main-app').style.display = 'none';
+    $('auth-wrap').style.display = 'flex';
+    $('main-app').style.display = 'none';
     document.querySelectorAll('.auth-tab').forEach(el => el.classList.remove('active'));
     document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
-    document.getElementById('af-reset').classList.add('active');
+    $('af-reset').classList.add('active');
   };
 
   Auth.onAuthStateChange(async (event, session) => {
@@ -114,7 +181,7 @@ async function init() {
         await Auth.syncEmailFromAuth();
         currentProfile = await Auth.getCurrentProfile();
         const pill = document.getElementById('user-name-pill');
-        if (pill) pill.textContent = currentProfile.nombre || currentProfile.email;
+        if (pill) pill.textContent = currentProfile?.nombre || currentProfile?.email || '—';
       } catch (e) { console.error('No se pudo sincronizar el email:', e); }
       return;
     }
@@ -136,22 +203,22 @@ async function init() {
   }
 }
 
-function wireStaticEvents() {
-  document.getElementById('modal-detalle').addEventListener('click', function (e) {
-    if (e.target === this) closeModal('modal-detalle');
+function wireStaticEvents(): void {
+  $('modal-detalle').addEventListener('click', function (e) {
+    if (e.target === this) window.closeModal('modal-detalle');
   });
-  document.getElementById('modal-ubicacion').addEventListener('click', function (e) {
-    if (e.target === this) closeModal('modal-ubicacion');
+  $('modal-ubicacion').addEventListener('click', function (e) {
+    if (e.target === this) window.closeModal('modal-ubicacion');
   });
-  document.getElementById('modal-perfil').addEventListener('click', function (e) {
-    if (e.target === this) closeModal('modal-perfil');
+  $('modal-perfil').addEventListener('click', function (e) {
+    if (e.target === this) window.closeModal('modal-perfil');
   });
   renderQuickTagButtons();
   renderSectorDatalist();
 }
 
-function renderQuickTagButtons() {
-  const mk = (containerId, list, type) => {
+function renderQuickTagButtons(): void {
+  const mk = (containerId: string, list: string[], type: TagType) => {
     const el = document.getElementById(containerId);
     if (!el) return;
     el.innerHTML = list.map((c, i) => `<button type="button" class="quick-tag-btn" onclick="quickAddTag('${type}',${i})">+ ${esc(c)}</button>`).join('');
@@ -162,7 +229,7 @@ function renderQuickTagButtons() {
   mk('quick-needs-covered', CATEGORIAS_SERVICIOS, 'needs-covered');
 }
 
-function renderSectorDatalist() {
+function renderSectorDatalist(): void {
   const dl = document.getElementById('sectores-list');
   if (!dl) return;
   dl.innerHTML = SECTORES.map(s => `<option value="${esc(s)}">`).join('');
@@ -174,12 +241,12 @@ function renderSectorDatalist() {
 window.authTab = function (t) {
   document.querySelectorAll('.auth-tab').forEach((el, i) => el.classList.toggle('active', ['login', 'registro'][i] === t));
   document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
-  document.getElementById('af-' + t).classList.add('active');
+  $('af-' + t).classList.add('active');
 };
 
 window.doLogin = async function () {
-  const email = document.getElementById('l-email').value.trim().toLowerCase();
-  const pass = document.getElementById('l-pass').value;
+  const email = $input('l-email').value.trim().toLowerCase();
+  const pass = $input('l-pass').value;
   if (!email || !pass) { showAuthMsg('l-msg', 'Completá email y contraseña.', 'err'); return; }
   setBusy('l-btn', true);
   try {
@@ -193,22 +260,22 @@ window.doLogin = async function () {
 };
 
 window.doRegister = async function () {
-  const nombre = document.getElementById('r-nombre').value.trim();
-  const apellido = document.getElementById('r-apellido').value.trim();
-  const email = document.getElementById('r-email').value.trim().toLowerCase();
-  const tel = document.getElementById('r-tel').value.trim();
-  const pass = document.getElementById('r-pass').value;
-  const pass2 = document.getElementById('r-pass2').value;
+  const nombre = $input('r-nombre').value.trim();
+  const apellido = $input('r-apellido').value.trim();
+  const email = $input('r-email').value.trim().toLowerCase();
+  const tel = $input('r-tel').value.trim();
+  const pass = $input('r-pass').value;
+  const pass2 = $input('r-pass2').value;
   if (!nombre || !apellido) { showAuthMsg('r-msg', 'Nombre y apellido son obligatorios.', 'err'); return; }
   if (!email || !isValidEmail(email)) { showAuthMsg('r-msg', 'Ingresá un email válido.', 'err'); return; }
   if (!tel) { showAuthMsg('r-msg', 'El teléfono móvil es obligatorio.', 'err'); return; }
-  if (!pass || pass.length < 6) { showAuthMsg('r-msg', 'La contraseña debe tener al menos 6 caracteres.', 'err'); return; }
+  if (!pass || pass.length < 8) { showAuthMsg('r-msg', 'La contraseña debe tener al menos 8 caracteres.', 'err'); return; }
   if (pass !== pass2) { showAuthMsg('r-msg', 'Las contraseñas no coinciden.', 'err'); return; }
 
   setBusy('r-btn', true);
   try {
     // No puede haber dos usuarios con el mismo nombre+apellido, email o
-    // teléfono móvil (ver sql/010_unique_profile_constraints.sql). Se
+    // teléfono móvil (ver sql/historial/010_unique_profile_constraints.sql). Se
     // valida acá antes de crear la cuenta para dar un mensaje claro en
     // vez del genérico que devolvería Supabase Auth si el trigger de la
     // base lo rechazara después.
@@ -222,7 +289,7 @@ window.doRegister = async function () {
       await enterApp();
     } else {
       showAuthMsg('r-msg', '✓ Cuenta creada. Revisá tu email para confirmar la cuenta antes de iniciar sesión.', 'ok');
-      authTab('login');
+      window.authTab('login');
     }
   } catch (e) {
     showAuthMsg('r-msg', friendlyError(e), 'err');
@@ -232,7 +299,7 @@ window.doRegister = async function () {
 };
 
 window.doLogout = async function () {
-  if (leafletMap) { leafletMap.remove(); leafletMap = null; mapMarkers = []; leafletReady = false; }
+  if (leafletMap) { leafletMap.remove(); leafletMap = null; mapMarkers = []; }
   await Auth.signOut();
   currentProfile = null;
   showAuthScreen();
@@ -241,11 +308,11 @@ window.doLogout = async function () {
 window.openForgotPassword = function () {
   document.querySelectorAll('.auth-tab').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
-  document.getElementById('af-forgot').classList.add('active');
+  $('af-forgot').classList.add('active');
 };
 
 window.doForgotPassword = async function () {
-  const email = document.getElementById('fp-email').value.trim().toLowerCase();
+  const email = $input('fp-email').value.trim().toLowerCase();
   if (!email || !isValidEmail(email)) { showAuthMsg('fp-msg', 'Ingresá un email válido.', 'err'); return; }
   setBusy('fp-btn', true);
   try {
@@ -259,9 +326,9 @@ window.doForgotPassword = async function () {
 };
 
 window.doResetPassword = async function () {
-  const p1 = document.getElementById('rp-pass').value;
-  const p2 = document.getElementById('rp-pass2').value;
-  if (!p1 || p1.length < 6) { showAuthMsg('rp-msg', 'La contraseña debe tener al menos 6 caracteres.', 'err'); return; }
+  const p1 = $input('rp-pass').value;
+  const p2 = $input('rp-pass2').value;
+  if (!p1 || p1.length < 8) { showAuthMsg('rp-msg', 'La contraseña debe tener al menos 8 caracteres.', 'err'); return; }
   if (p1 !== p2) { showAuthMsg('rp-msg', 'Las contraseñas no coinciden.', 'err'); return; }
   setBusy('rp-btn', true);
   try {
@@ -275,42 +342,43 @@ window.doResetPassword = async function () {
   }
 };
 
-function setBusy(btnId, busy) {
-  const btn = document.getElementById(btnId);
+function setBusy(btnId: string, busy: boolean): void {
+  const btn = document.getElementById(btnId) as HTMLButtonElement | null;
   if (btn) btn.disabled = busy;
 }
 
-function showAuthMsg(id, msg, type) {
-  const el = document.getElementById(id);
+function showAuthMsg(id: string, msg: string, type: 'err' | 'ok'): void {
+  const el = $(id);
   el.textContent = msg; el.style.display = 'block';
   el.style.color = type === 'err' ? '#c62828' : '#2e7d32';
 }
 
-function showAuthScreen() {
-  document.getElementById('auth-wrap').style.display = 'flex';
-  document.getElementById('main-app').style.display = 'none';
-  document.getElementById('l-pass').value = '';
+function showAuthScreen(): void {
+  $('auth-wrap').style.display = 'flex';
+  $('main-app').style.display = 'none';
+  $input('l-pass').value = '';
 }
 
-async function enterApp() {
+async function enterApp(): Promise<void> {
   try {
     currentProfile = await Auth.getCurrentProfile();
   } catch (e) {
     showAuthMsg('l-msg', friendlyError(e), 'err');
     return;
   }
-  document.getElementById('auth-wrap').style.display = 'none';
-  document.getElementById('main-app').style.display = 'block';
-  document.getElementById('user-name-pill').textContent = currentProfile.nombre || currentProfile.email;
+  if (!currentProfile) return;
+  $('auth-wrap').style.display = 'none';
+  $('main-app').style.display = 'block';
+  $('user-name-pill').textContent = currentProfile.nombre || currentProfile.email || '—';
   const isAdmin = currentProfile.role === 'admin';
-  document.getElementById('admin-tab-btn').classList.toggle('hidden', !isAdmin);
-  document.getElementById('admin-badge').classList.toggle('hidden', !isAdmin);
+  $('admin-tab-btn').classList.toggle('hidden', !isAdmin);
+  $('admin-badge').classList.toggle('hidden', !isAdmin);
 
   await refreshData();
-  showScreen('directorio');
+  window.showScreen('directorio');
 }
 
-async function refreshData() {
+async function refreshData(): Promise<void> {
   const [e, p, a] = await Promise.all([Empresas.listEmpresas(), Auth.listProfiles(), Empresas.listAsociaciones()]);
   orgs = e;
   profiles = p;
@@ -320,23 +388,16 @@ async function refreshData() {
 
 // Todos los usuarios con acceso a una empresa: el administrador principal
 // (o.uid) más los usuarios adicionales que un admin haya asociado
-// desde el panel (empresa_usuarios, ver sql/009).
-function usuariosDeEmpresa(o) {
-  const ids = new Set();
+// desde el panel (empresa_usuarios, ver sql/historial/009).
+function usuariosDeEmpresa(o: Empresa): string[] {
+  const ids = new Set<string>();
   if (o.uid) ids.add(o.uid);
   asociaciones.filter(a => a.empresa_id === o.id).forEach(a => ids.add(a.user_id));
   return [...ids];
 }
 
-// ¿El usuario currentProfile tiene acceso de edición a esta empresa?
-function esMiEmpresa(o) {
-  if (!currentProfile) return false;
-  if (currentProfile.role === 'admin') return true;
-  return (o.usuarios || usuariosDeEmpresa(o)).includes(currentProfile.id);
-}
-
 // ¿userId es administrador principal o usuario asociado de esta empresa? (sin contar admin global)
-function esUsuarioDeEmpresa(o, userId) {
+function esUsuarioDeEmpresa(o: Empresa, userId: string | null | undefined): boolean {
   if (!userId) return false;
   return (o.usuarios || usuariosDeEmpresa(o)).includes(userId);
 }
@@ -344,19 +405,19 @@ function esUsuarioDeEmpresa(o, userId) {
 // ══════════════════════════════════════════════
 // HELPERS
 // ══════════════════════════════════════════════
-function getProfileById(uid) { return profiles.find(u => u.id === uid); }
+function getProfileById(uid: string | null | undefined): Profile | undefined { return profiles.find(u => u.id === uid); }
 
 // Clases de tamaño (ver assets/css/style.css): 42px es el tamaño por
 // defecto de .avatar/.org-logo-img, así que solo hace falta un modificador
 // cuando el tamaño pedido es distinto.
-function sizeClass(size) {
+function sizeClass(size: number): string {
   if (size >= 56) return 'sz-56';
   if (size >= 38 && size < 42) return 'sz-38';
   if (size <= 30) return 'sz-30';
   return '';
 }
 
-function logoOrAvatar(o, size = 42) {
+function logoOrAvatar(o: Empresa, size = 42): string {
   const sc = sizeClass(size);
   if (o.logo) {
     return `<img src="${esc(o.logo)}" class="org-logo-img ${sc}" alt="logo de ${esc(o.nombre)}">`;
@@ -367,8 +428,8 @@ function logoOrAvatar(o, size = 42) {
 // Botón(es) de contacto directo para una organización: email y/o teléfono.
 // Se usa tanto en la lista de Vinculación como en el detalle de empresa,
 // para que contactar a la otra empresa sea un solo click.
-function contactButtonsHtml(org) {
-  const parts = [];
+function contactButtonsHtml(org: Empresa): string {
+  const parts: string[] = [];
   if (org.emailOrg) {
     parts.push(`<a class="btn-contact" href="mailto:${esc(org.emailOrg)}"><i class="ti ti-mail"></i> Contactar por email</a>`);
   }
@@ -391,27 +452,27 @@ window.showScreen = function (name) {
   const names = ['directorio', 'graduados', 'vinculacion', 'mapa', 'mis-empresas', 'registrar', 'admin'];
   const idx = names.indexOf(name);
   if (idx >= 0) { const btns = document.querySelectorAll('.tab-btn'); if (btns[idx]) btns[idx].classList.add('active'); }
-  if (name === 'directorio') renderDir();
-  if (name === 'graduados') renderGraduados();
-  if (name === 'vinculacion') renderVin();
-  if (name === 'mapa') renderMapa();
-  if (name === 'mis-empresas') renderMias();
+  if (name === 'directorio') window.renderDir();
+  if (name === 'graduados') window.renderGraduados();
+  if (name === 'vinculacion') window.renderVin();
+  if (name === 'mapa') window.renderMapa().catch(e => console.error('No se pudo cargar el mapa:', e));
+  if (name === 'mis-empresas') window.renderMias();
   if (name === 'registrar') { if (!editingId) prefillUser(); }
-  if (name === 'admin') renderAdmin();
+  if (name === 'admin') window.renderAdmin();
 };
 
 window.setFilter = function (el, val) {
   document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
-  el.classList.add('active'); activeFilter = val; renderDir();
+  el.classList.add('active'); activeFilter = val; window.renderDir();
 };
 
-function prefillUser() {
+function prefillUser(): void {
   if (!currentProfile || editingId) return;
-  const r = document.getElementById('f-referente');
+  const r = document.getElementById('f-referente') as HTMLInputElement | null;
   if (r && !r.value) r.value = `${currentProfile.nombre} ${currentProfile.apellido}`.trim();
-  const e = document.getElementById('f-email-org');
+  const e = document.getElementById('f-email-org') as HTMLInputElement | null;
   if (e && !e.value) e.value = currentProfile.email || '';
-  const p = document.getElementById('f-pais');
+  const p = document.getElementById('f-pais') as HTMLInputElement | null;
   if (p && !p.value) p.value = 'Argentina';
 }
 
@@ -419,7 +480,7 @@ function prefillUser() {
 // DIRECTORIO EMPRESAS
 // ══════════════════════════════════════════════
 window.renderDir = function () {
-  const q = (document.getElementById('search-input').value || '').toLowerCase();
+  const q = ($input('search-input').value || '').toLowerCase();
   const INDUSTRIAL_KEYWORDS = ['Industrial', 'Autopartista', 'Microfusión', 'Transmisión', 'Materiales', 'Calzado', 'Herramientas', 'Electrotecnia', 'Sanitarios', 'Ferroviario', 'Inspección', 'Portuario', 'mecánica', 'eléctric'];
   let filtered = orgs.filter(o => {
     if (activeFilter === 'Oil & Gas' && !(o.sector || '').includes('Oil')) return false;
@@ -431,13 +492,13 @@ window.renderDir = function () {
     return hay.includes(q);
   });
 
-  document.getElementById('stat-total').textContent = orgs.length;
-  document.getElementById('stat-users').textContent = profiles.filter(u => u.role !== 'admin').length;
-  document.getElementById('stat-sectores').textContent = new Set(orgs.map(o => o.sector).filter(Boolean)).size;
-  document.getElementById('stat-matches').textContent = countMatches(orgs);
-  document.getElementById('dir-count').textContent = filtered.length;
+  $('stat-total').textContent = String(orgs.length);
+  $('stat-users').textContent = String(profiles.filter(u => u.role !== 'admin').length);
+  $('stat-sectores').textContent = String(new Set(orgs.map(o => o.sector).filter(Boolean)).size);
+  $('stat-matches').textContent = String(countMatches(orgs));
+  $('dir-count').textContent = String(filtered.length);
 
-  const grid = document.getElementById('org-grid');
+  const grid = $('org-grid');
   if (!filtered.length) {
     grid.innerHTML = '<div class="empty empty--full"><i class="ti ti-building-off"></i>Sin resultados para ese criterio.</div>';
     return;
@@ -446,7 +507,7 @@ window.renderDir = function () {
 };
 
 // Tarjeta de organización, compartida entre el Directorio y "Mis empresas".
-function renderOrgCard(o) {
+function renderOrgCard(o: Empresa): string {
   const mine = currentProfile && esUsuarioDeEmpresa(o, currentProfile.id);
   const loc = [o.ciudad, o.provincia].filter(Boolean).join(', ');
   return `<div class="org-card${mine ? ' mine' : ''}" onclick="openDetail(${o.id})">
@@ -468,7 +529,7 @@ function renderOrgCard(o) {
 // DIRECTORIO GRADUADOS
 // ══════════════════════════════════════════════
 window.renderGraduados = function () {
-  const q = (document.getElementById('search-grad').value || '').toLowerCase();
+  const q = ($input('search-grad').value || '').toLowerCase();
   const visible = profiles.filter(u => u.role !== 'admin');
   const filtered = visible.filter(u => {
     if (!q) return true;
@@ -476,8 +537,8 @@ window.renderGraduados = function () {
     return [u.nombre, u.apellido, u.email, uOrgs].join(' ').toLowerCase().includes(q);
   });
 
-  document.getElementById('grad-count').textContent = filtered.length;
-  const grid = document.getElementById('grad-grid');
+  $('grad-count').textContent = String(filtered.length);
+  const grid = $('grad-grid');
   if (!filtered.length) {
     grid.innerHTML = '<div class="empty empty--full"><i class="ti ti-users-off"></i>Sin resultados.</div>';
     return;
@@ -513,39 +574,76 @@ window.renderGraduados = function () {
 // ══════════════════════════════════════════════
 // MAPA (Leaflet + OpenStreetMap, sin clave API)
 // ══════════════════════════════════════════════
-async function loadScript(src) {
-  return new Promise((resolve, reject) => {
-    if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
-    const s = document.createElement('script'); s.src = src;
-    s.onload = resolve; s.onerror = reject; document.head.appendChild(s);
-  });
-}
-async function loadCSS(href) {
-  if (document.querySelector(`link[href="${href}"]`)) return;
-  const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = href;
-  document.head.appendChild(l);
+
+// Leaflet se importa recién cuando hace falta (pestaña "Mapa"), ya
+// bundleado por Vite en vez de cargarlo en runtime desde unpkg.com: sin
+// dependencia de red externa una vez construido el sitio, con versión fija
+// en package-lock.json, y sin bajarle esos ~150 KB a quien nunca abre el
+// mapa. El propio import() lo cachea el motor de JS, no hace falta un
+// flag "ya está listo" como antes.
+async function ensureLeaflet(): Promise<typeof LeafletTypes> {
+  if (!leafletModule) {
+    await import('leaflet/dist/leaflet.css');
+    leafletModule = await import('leaflet');
+  }
+  return leafletModule;
 }
 
-async function geocodeAddress(address) {
+interface GeoCoords { lat: number; lng: number }
+type GeocodeCacheValue = GeoCoords | null;
+
+// Caché de geocoding (memoria + localStorage). Nominatim (el geocoder
+// gratuito de OpenStreetMap) pide explícitamente no golpear su API sin
+// cachear: antes esto se re-geocodificaba TODO el directorio cada vez que
+// se abría la pestaña "Mapa", en serie y sin guardar nada. Acá se cachea
+// por dirección normalizada; no se cachean errores de red (sí se cachea
+// "no se encontró esa dirección") para poder reintentar si fue un problema
+// pasajero de conexión.
+const GEOCODE_CACHE_KEY = 'cupfi_geocode_cache_v1';
+let geocodeCache: Record<string, GeocodeCacheValue> | null = null;
+
+function loadGeocodeCache(): Record<string, GeocodeCacheValue> {
+  if (geocodeCache) return geocodeCache;
+  try {
+    const raw = localStorage.getItem(GEOCODE_CACHE_KEY);
+    geocodeCache = raw ? JSON.parse(raw) : {};
+  } catch {
+    geocodeCache = {};
+  }
+  return geocodeCache!;
+}
+
+function saveGeocodeCache(): void {
+  try {
+    localStorage.setItem(GEOCODE_CACHE_KEY, JSON.stringify(geocodeCache || {}));
+  } catch {
+    // localStorage puede no estar disponible (modo privado, cuota llena);
+    // no es crítico, simplemente no persiste entre sesiones.
+  }
+}
+
+async function geocodeAddress(address: string): Promise<GeocodeCacheValue> {
+  const cache = loadGeocodeCache();
+  const key = address.trim().toLowerCase();
+  if (key in cache) return cache[key];
   try {
     const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&countrycodes=ar`;
     const res = await fetch(url, { headers: { 'Accept-Language': 'es' } });
     const data = await res.json();
-    if (data && data.length) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
-  } catch (e) { /* silencioso: si falla el geocoder, simplemente no se ubica ese punto */ }
-  return null;
+    const coords: GeocodeCacheValue = data && data.length ? { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) } : null;
+    cache[key] = coords;
+    saveGeocodeCache();
+    return coords;
+  } catch {
+    return null; // silencioso y sin cachear: si falla la red, se reintenta la próxima vez
+  }
 }
 
 window.renderMapa = async function () {
   const withLoc = orgs.filter(o => o.ciudad || o.provincia);
-  document.getElementById('map-count').textContent = withLoc.length;
+  $('map-count').textContent = String(withLoc.length);
 
-  if (!leafletReady) {
-    await loadCSS('https://unpkg.com/leaflet@1.9.4/dist/leaflet.css');
-    await loadScript('https://unpkg.com/leaflet@1.9.4/dist/leaflet.js');
-    await new Promise(r => setTimeout(r, 300));
-    leafletReady = true;
-  }
+  const L = await ensureLeaflet();
 
   if (!leafletMap) {
     leafletMap = L.map('gmap').setView([-38.5, -63.5], 4);
@@ -554,6 +652,7 @@ window.renderMapa = async function () {
       maxZoom: 18,
     }).addTo(leafletMap);
   }
+  const map = leafletMap;
 
   mapMarkers.forEach(m => m.remove());
   mapMarkers = [];
@@ -568,7 +667,7 @@ window.renderMapa = async function () {
     className: '', iconSize: [28, 36], iconAnchor: [14, 36], popupAnchor: [0, -38],
   });
 
-  for (const o of withLoc.slice()) {
+  for (const o of withLoc) {
     const addr = buildAddress(o);
     const query = [o.ciudad, o.provincia, o.pais].filter(Boolean).join(', ');
     const coords = await geocodeAddress(query);
@@ -594,20 +693,20 @@ window.renderMapa = async function () {
       </button>
     </div>`;
 
-    const marker = L.marker([coords.lat, coords.lng], { icon: makeIcon() }).addTo(leafletMap);
+    const marker = L.marker([coords.lat, coords.lng], { icon: makeIcon() }).addTo(map);
     marker.bindPopup(popupHtml, { maxWidth: 260, closeButton: true });
     mapMarkers.push(marker);
   }
 
   if (mapMarkers.length > 0) {
     const group = L.featureGroup(mapMarkers);
-    leafletMap.fitBounds(group.getBounds().pad(0.2));
+    map.fitBounds(group.getBounds().pad(0.2));
   }
 };
 
 window._openDetail = function (id) {
   if (leafletMap) leafletMap.closePopup();
-  openDetail(id);
+  window.openDetail(id);
 };
 
 // ══════════════════════════════════════════════
@@ -615,9 +714,9 @@ window._openDetail = function (id) {
 // ══════════════════════════════════════════════
 window.renderMias = function () {
   if (!currentProfile) return;
-  const mine = orgs.filter(o => esUsuarioDeEmpresa(o, currentProfile.id));
-  document.getElementById('mis-count').textContent = mine.length;
-  const grid = document.getElementById('mis-grid');
+  const mine = orgs.filter(o => esUsuarioDeEmpresa(o, currentProfile!.id));
+  $('mis-count').textContent = String(mine.length);
+  const grid = $('mis-grid');
   if (!mine.length) {
     grid.innerHTML = `<div class="empty empty--full">
       <i class="ti ti-building-plus"></i>
@@ -641,8 +740,8 @@ window.openDetail = function (id) {
   const u = getProfileById(o.uid);
   const mapsUrl = addr ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}` : '';
 
-  document.getElementById('md-title').textContent = o.nombre;
-  document.getElementById('modal-body').innerHTML = `
+  $('md-title').textContent = o.nombre;
+  $('modal-body').innerHTML = `
     <div class="dsec">
       <div class="detail-head">
         ${logoOrAvatar(o, 56)}
@@ -690,11 +789,11 @@ window.openDetail = function (id) {
       <button class="btn-edit-inline" onclick="startEdit(${o.id});closeModal('modal-detalle')"><i class="ti ti-pencil"></i> Editar esta empresa</button>
     </div>` : ''}
   `;
-  document.getElementById('modal-detalle').classList.add('open');
+  $('modal-detalle').classList.add('open');
 };
 
 window.closeModal = function (id) {
-  document.getElementById(id).classList.remove('open');
+  $(id).classList.remove('open');
 };
 
 // ══════════════════════════════════════════════
@@ -702,20 +801,21 @@ window.closeModal = function (id) {
 // ══════════════════════════════════════════════
 window.openEditProfile = function () {
   if (!currentProfile) return;
-  document.getElementById('pf-nombre').value = currentProfile.nombre || '';
-  document.getElementById('pf-apellido').value = currentProfile.apellido || '';
-  document.getElementById('pf-tel').value = currentProfile.tel || '';
-  document.getElementById('pf-email').value = currentProfile.email || '';
-  document.getElementById('pf-msg').style.display = 'none';
-  document.getElementById('modal-perfil').classList.add('open');
+  $input('pf-nombre').value = currentProfile.nombre || '';
+  $input('pf-apellido').value = currentProfile.apellido || '';
+  $input('pf-tel').value = currentProfile.tel || '';
+  $input('pf-email').value = currentProfile.email || '';
+  $('pf-msg').style.display = 'none';
+  $('modal-perfil').classList.add('open');
 };
 
 window.guardarPerfil = async function () {
-  const nombre = document.getElementById('pf-nombre').value.trim();
-  const apellido = document.getElementById('pf-apellido').value.trim();
-  const tel = document.getElementById('pf-tel').value.trim();
-  const nuevoEmail = document.getElementById('pf-email').value.trim();
-  const msg = document.getElementById('pf-msg');
+  if (!currentProfile) return;
+  const nombre = $input('pf-nombre').value.trim();
+  const apellido = $input('pf-apellido').value.trim();
+  const tel = $input('pf-tel').value.trim();
+  const nuevoEmail = $input('pf-email').value.trim();
+  const msg = $('pf-msg');
   if (!nombre || !apellido) {
     msg.textContent = 'Nombre y apellido son obligatorios.';
     msg.className = 'form-msg err';
@@ -738,7 +838,7 @@ window.guardarPerfil = async function () {
 
     const updated = await Auth.updateOwnProfile({ nombre, apellido, tel });
     currentProfile = { ...currentProfile, ...updated };
-    document.getElementById('user-name-pill').textContent = currentProfile.nombre || currentProfile.email;
+    $('user-name-pill').textContent = currentProfile.nombre || currentProfile.email || '—';
 
     let emailPendiente = false;
     if (nuevoEmail !== currentProfile.email) {
@@ -747,13 +847,13 @@ window.guardarPerfil = async function () {
     }
 
     await refreshData();
-    renderGraduados();
+    window.renderGraduados();
     msg.textContent = emailPendiente
       ? '✓ Perfil actualizado. Te enviamos un correo de confirmación a ' + nuevoEmail + ': hasta que lo confirmes, seguís entrando con tu email anterior.'
       : '✓ Perfil actualizado.';
     msg.className = 'form-msg ok';
     msg.style.display = 'block';
-    if (!emailPendiente) setTimeout(() => closeModal('modal-perfil'), 900);
+    if (!emailPendiente) setTimeout(() => window.closeModal('modal-perfil'), 900);
   } catch (e) {
     msg.textContent = friendlyError(e);
     msg.className = 'form-msg err';
@@ -762,7 +862,8 @@ window.guardarPerfil = async function () {
 };
 
 window.solicitarCambioPassword = async function () {
-  const msg = document.getElementById('pf-msg');
+  if (!currentProfile?.email) return;
+  const msg = $('pf-msg');
   try {
     await Auth.resetPasswordForEmail(currentProfile.email);
     msg.textContent = '✓ Te enviamos un correo a ' + currentProfile.email + ' con un link para definir una nueva contraseña.';
@@ -779,22 +880,22 @@ window.solicitarCambioPassword = async function () {
 // LOGO (archivo real; se sube a Supabase Storage al guardar)
 // ══════════════════════════════════════════════
 window.previewLogo = function () {
-  const file = document.getElementById('f-logo').files[0];
+  const file = $input('f-logo').files?.[0];
   if (!file) return;
   try {
     Empresas.validateLogoFile(file);
   } catch (e) {
-    alert(e.message);
-    document.getElementById('f-logo').value = '';
+    alert((e as Error).message);
+    $input('f-logo').value = '';
     return;
   }
   currentLogoFile = file;
   const reader = new FileReader();
   reader.onload = ev => {
-    const img = document.getElementById('logo-preview-img');
-    img.src = ev.target.result;
+    const img = $img('logo-preview-img');
+    img.src = String(ev.target?.result || '');
     img.classList.remove('hidden');
-    document.getElementById('logo-clear-btn').classList.remove('hidden');
+    $('logo-clear-btn').classList.remove('hidden');
   };
   reader.readAsDataURL(file);
 };
@@ -802,10 +903,10 @@ window.previewLogo = function () {
 window.clearLogo = function () {
   currentLogoFile = null;
   currentLogoUrl = null;
-  document.getElementById('f-logo').value = '';
-  const img = document.getElementById('logo-preview-img');
+  $input('f-logo').value = '';
+  const img = $img('logo-preview-img');
   img.src = ''; img.classList.add('hidden');
-  document.getElementById('logo-clear-btn').classList.add('hidden');
+  $('logo-clear-btn').classList.add('hidden');
 };
 
 // ══════════════════════════════════════════════
@@ -813,12 +914,12 @@ window.clearLogo = function () {
 // garantiza la restricción UNIQUE en la base de datos)
 // ══════════════════════════════════════════════
 window.checkCuit = function () {
-  const raw = document.getElementById('f-cuit').value.trim();
-  const el = document.getElementById('cuit-check');
+  const raw = $input('f-cuit').value.trim();
+  const el = $('cuit-check');
   if (!raw) { el.textContent = ''; return; }
   const digits = normCuit(raw);
   if (digits.length < 10) { el.textContent = ''; return; }
-  const editId = document.getElementById('f-edit-id').value;
+  const editId = $input('f-edit-id').value;
   const existing = orgs.find(o => normCuit(o.cuit) === digits && String(o.id) !== editId);
   if (existing) {
     el.style.color = '#c62828';
@@ -843,34 +944,37 @@ window.startEdit = function (id) {
   currentLogoFile = null;
   currentLogoUrl = o.logo || null;
 
-  document.getElementById('f-edit-id').value = id;
-  document.getElementById('form-screen-title').textContent = 'Editar empresa';
-  document.getElementById('form-btn-label').textContent = 'Guardar cambios';
+  $input('f-edit-id').value = String(id);
+  $('form-screen-title').textContent = 'Editar empresa';
+  $('form-btn-label').textContent = 'Guardar cambios';
 
-  const fields = {
+  const fields: Record<string, string | null> = {
     'f-tipo': o.tipo, 'f-cuit': o.cuit, 'f-nombre': o.nombre, 'f-sector': o.sector,
     'f-email-org': o.emailOrg, 'f-tel': o.tel, 'f-web': o.web,
     'f-calle': o.calle, 'f-ciudad': o.ciudad, 'f-provincia': o.provincia, 'f-pais': o.pais,
     'f-referente': o.referente, 'f-cargo': o.cargo, 'f-desc': o.desc,
   };
-  Object.entries(fields).forEach(([k, v]) => { const el = document.getElementById(k); if (el) el.value = v || ''; });
+  Object.entries(fields).forEach(([k, v]) => {
+    const el = document.getElementById(k) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null;
+    if (el) el.value = v || '';
+  });
 
-  const img = document.getElementById('logo-preview-img');
-  const clr = document.getElementById('logo-clear-btn');
+  const img = $img('logo-preview-img');
+  const clr = $('logo-clear-btn');
   if (o.logo) { img.src = o.logo; img.classList.remove('hidden'); clr.classList.remove('hidden'); }
   else { img.src = ''; img.classList.add('hidden'); clr.classList.add('hidden'); }
-  document.getElementById('f-logo').value = '';
+  $input('f-logo').value = '';
 
-  Object.keys(tags).forEach(k => { tags[k] = []; });
+  (Object.keys(tags) as TagType[]).forEach(k => { tags[k] = []; });
   tags.ofertas = [...(o.ofertas || [])];
   tags.instalaciones = [...(o.instalaciones || [])];
   tags['needs-uncovered'] = [...(o.needsUncovered || [])];
   tags['needs-covered'] = [...(o.needsCovered || [])];
-  Object.keys(tags).forEach(k => renderTags(k));
+  (Object.keys(tags) as TagType[]).forEach(k => renderTags(k));
 
-  document.getElementById('cuit-check').textContent = '';
-  document.getElementById('form-msg').style.display = 'none';
-  showScreen('registrar');
+  $('cuit-check').textContent = '';
+  $('form-msg').style.display = 'none';
+  window.showScreen('registrar');
 };
 
 window.cancelEdit = function () {
@@ -879,27 +983,28 @@ window.cancelEdit = function () {
   editingId = null;
   currentLogoFile = null;
   currentLogoUrl = null;
-  document.getElementById('f-edit-id').value = '';
-  document.getElementById('form-screen-title').textContent = 'Agregar empresa u organización';
-  document.getElementById('form-btn-label').textContent = 'Registrar empresa';
+  $input('f-edit-id').value = '';
+  $('form-screen-title').textContent = 'Agregar empresa u organización';
+  $('form-btn-label').textContent = 'Registrar empresa';
   resetForm();
-  if (wasEditing) showScreen(returnTo || 'directorio');
+  if (wasEditing) window.showScreen(returnTo || 'directorio');
 };
 
-function resetForm() {
+function resetForm(): void {
   ['nombre', 'cuit', 'sector', 'calle', 'ciudad', 'provincia', 'pais', 'referente', 'cargo', 'email-org', 'tel', 'web', 'desc'].forEach(id => {
-    const el = document.getElementById('f-' + id); if (el) el.value = '';
+    const el = document.getElementById('f-' + id) as HTMLInputElement | HTMLTextAreaElement | null;
+    if (el) el.value = '';
   });
-  document.getElementById('f-tipo').value = 'Empresa';
-  document.getElementById('f-logo').value = '';
-  const img = document.getElementById('logo-preview-img');
+  $select('f-tipo').value = 'Empresa';
+  $input('f-logo').value = '';
+  const img = $img('logo-preview-img');
   img.src = ''; img.classList.add('hidden');
-  document.getElementById('logo-clear-btn').classList.add('hidden');
-  document.getElementById('cuit-check').textContent = '';
+  $('logo-clear-btn').classList.add('hidden');
+  $('cuit-check').textContent = '';
   currentLogoFile = null;
   currentLogoUrl = null;
-  Object.keys(tags).forEach(k => { tags[k] = []; renderTags(k); });
-  document.getElementById('form-msg').style.display = 'none';
+  (Object.keys(tags) as TagType[]).forEach(k => { tags[k] = []; renderTags(k); });
+  $('form-msg').style.display = 'none';
 }
 
 // ══════════════════════════════════════════════
@@ -908,22 +1013,22 @@ function resetForm() {
 window.guardarOrg = async function () {
   if (!currentProfile) { showFormMsg('Debés iniciar sesión.', 'err'); return; }
 
-  const nombre = document.getElementById('f-nombre').value.trim();
-  const cuitRaw = document.getElementById('f-cuit').value.trim();
-  const webRaw = document.getElementById('f-web').value.trim();
+  const nombre = $input('f-nombre').value.trim();
+  const cuitRaw = $input('f-cuit').value.trim();
+  const webRaw = $input('f-web').value.trim();
 
   if (!nombre) { showFormMsg('El nombre de la organización es obligatorio.', 'err'); return; }
   if (!cuitRaw) { showFormMsg('El CUIT es obligatorio.', 'err'); return; }
   if (!isValidCuit(cuitRaw)) { showFormMsg('El CUIT debe tener 11 dígitos.', 'err'); return; }
   if (webRaw && !isValidUrl(webRaw)) { showFormMsg('El sitio web debe empezar con http:// o https://', 'err'); return; }
 
-  const editId = document.getElementById('f-edit-id').value;
+  const editId = $input('f-edit-id').value;
   const digits = normCuit(cuitRaw);
   if (orgs.find(o => normCuit(o.cuit) === digits && String(o.id) !== editId)) {
     showFormMsg('Ya existe una empresa registrada con ese CUIT.', 'err'); return;
   }
 
-  const submitBtn = document.getElementById('form-submit-btn');
+  const submitBtn = $button('form-submit-btn');
   submitBtn.disabled = true;
   try {
     let logoUrl = currentLogoUrl;
@@ -934,19 +1039,19 @@ window.guardarOrg = async function () {
 
     const data = {
       cuit: cuitRaw,
-      tipo: document.getElementById('f-tipo').value,
+      tipo: $select('f-tipo').value,
       nombre,
-      sector: document.getElementById('f-sector').value.trim(),
-      calle: document.getElementById('f-calle').value.trim(),
-      ciudad: document.getElementById('f-ciudad').value.trim(),
-      provincia: document.getElementById('f-provincia').value.trim(),
-      pais: document.getElementById('f-pais').value.trim() || 'Argentina',
-      referente: document.getElementById('f-referente').value.trim(),
-      cargo: document.getElementById('f-cargo').value.trim(),
-      emailOrg: document.getElementById('f-email-org').value.trim(),
-      tel: document.getElementById('f-tel').value.trim(),
+      sector: $input('f-sector').value.trim(),
+      calle: $input('f-calle').value.trim(),
+      ciudad: $input('f-ciudad').value.trim(),
+      provincia: $input('f-provincia').value.trim(),
+      pais: $input('f-pais').value.trim() || 'Argentina',
+      referente: $input('f-referente').value.trim(),
+      cargo: $input('f-cargo').value.trim(),
+      emailOrg: $input('f-email-org').value.trim(),
+      tel: $input('f-tel').value.trim(),
       web: webRaw,
-      desc: document.getElementById('f-desc').value.trim(),
+      desc: $textarea('f-desc').value.trim(),
       logo: logoUrl || null,
       ofertas: [...tags.ofertas],
       instalaciones: [...tags.instalaciones],
@@ -970,12 +1075,12 @@ window.guardarOrg = async function () {
       // tirar al usuario al formulario de alta vacío sin aviso).
       const returnTo = editReturnScreen;
       editingId = null;
-      document.getElementById('f-edit-id').value = '';
+      $input('f-edit-id').value = '';
       setTimeout(() => {
         resetForm();
-        document.getElementById('form-screen-title').textContent = 'Agregar empresa u organización';
-        document.getElementById('form-btn-label').textContent = 'Registrar empresa';
-        showScreen(returnTo || 'directorio');
+        $('form-screen-title').textContent = 'Agregar empresa u organización';
+        $('form-btn-label').textContent = 'Registrar empresa';
+        window.showScreen(returnTo || 'directorio');
       }, 1300);
     } else {
       setTimeout(() => resetForm(), 1300);
@@ -987,8 +1092,8 @@ window.guardarOrg = async function () {
   }
 };
 
-function showFormMsg(msg, type) {
-  const el = document.getElementById('form-msg');
+function showFormMsg(msg: string, type: 'err' | 'ok'): void {
+  const el = $('form-msg');
   el.textContent = msg;
   el.className = `form-msg ${type}`;
   el.style.display = 'block';
@@ -1000,25 +1105,25 @@ function showFormMsg(msg, type) {
 window.openEditUbicacion = function (id) {
   const o = orgs.find(x => x.id === id);
   if (!o) return;
-  document.getElementById('ub-id').value = id;
-  document.getElementById('ub-calle').value = o.calle || '';
-  document.getElementById('ub-ciudad').value = o.ciudad || '';
-  document.getElementById('ub-provincia').value = o.provincia || '';
-  document.getElementById('ub-pais').value = o.pais || 'Argentina';
-  document.getElementById('ub-msg').style.display = 'none';
-  document.getElementById('modal-ub-title').textContent = 'Ubicación: ' + o.nombre;
-  document.getElementById('modal-ubicacion').classList.add('open');
+  $input('ub-id').value = String(id);
+  $input('ub-calle').value = o.calle || '';
+  $input('ub-ciudad').value = o.ciudad || '';
+  $input('ub-provincia').value = o.provincia || '';
+  $input('ub-pais').value = o.pais || 'Argentina';
+  $('ub-msg').style.display = 'none';
+  $('modal-ub-title').textContent = 'Ubicación: ' + o.nombre;
+  $('modal-ubicacion').classList.add('open');
 };
 
 window.guardarUbicacion = async function () {
-  const id = parseInt(document.getElementById('ub-id').value, 10);
+  const id = parseInt($input('ub-id').value, 10);
   const payload = {
-    calle: document.getElementById('ub-calle').value.trim(),
-    ciudad: document.getElementById('ub-ciudad').value.trim(),
-    provincia: document.getElementById('ub-provincia').value.trim(),
-    pais: document.getElementById('ub-pais').value.trim() || 'Argentina',
+    calle: $input('ub-calle').value.trim(),
+    ciudad: $input('ub-ciudad').value.trim(),
+    provincia: $input('ub-provincia').value.trim(),
+    pais: $input('ub-pais').value.trim() || 'Argentina',
   };
-  const msg = document.getElementById('ub-msg');
+  const msg = $('ub-msg');
   try {
     await Empresas.updateEmpresa(id, payload);
     await refreshData();
@@ -1026,8 +1131,8 @@ window.guardarUbicacion = async function () {
     msg.textContent = '✓ Ubicación guardada.';
     msg.className = 'form-msg ok';
     msg.style.display = 'block';
-    renderAdmin();
-    setTimeout(() => closeModal('modal-ubicacion'), 1200);
+    window.renderAdmin();
+    setTimeout(() => window.closeModal('modal-ubicacion'), 1200);
   } catch (e) {
     msg.textContent = friendlyError(e);
     msg.className = 'form-msg err';
@@ -1043,13 +1148,13 @@ window.setVinFilter = function (el, val) {
   // filtro del Directorio (que usan la misma clase .chip).
   document.querySelectorAll('#screen-vinculacion .chip').forEach(c => c.classList.remove('active'));
   el.classList.add('active');
-  activeVinFilter = val;
-  renderVin();
+  activeVinFilter = val as 'todos' | 'strong' | 'weak';
+  window.renderVin();
 };
 
 window.renderVin = function () {
   const totalGrouped = groupMatchesByPair(allMatches(orgs));
-  const q = (document.getElementById('search-vin').value || '').toLowerCase();
+  const q = ($input('search-vin').value || '').toLowerCase();
 
   let grouped = totalGrouped;
   if (activeVinFilter === 'strong') {
@@ -1068,8 +1173,8 @@ window.renderVin = function () {
     });
   }
 
-  document.getElementById('vin-count').textContent = grouped.length;
-  const list = document.getElementById('vin-list');
+  $('vin-count').textContent = String(grouped.length);
+  const list = $('vin-list');
   if (!grouped.length) {
     list.innerHTML = totalGrouped.length
       ? '<div class="empty"><i class="ti ti-arrows-exchange"></i>Sin resultados para ese criterio.</div>'
@@ -1106,7 +1211,7 @@ window.renderVin = function () {
 // ══════════════════════════════════════════════
 // TAGS
 // ══════════════════════════════════════════════
-function addTagValue(type, rawVal) {
+function addTagValue(type: TagType, rawVal: string): void {
   const val = String(rawVal || '').trim().replace(/\s+/g, ' ');
   if (!val) return;
   const key = normalizeTagKey(val);
@@ -1118,7 +1223,7 @@ function addTagValue(type, rawVal) {
 window.addTag = function (event, type) {
   if (event.key !== 'Enter') return;
   event.preventDefault();
-  const inp = document.getElementById('input-' + type);
+  const inp = $input('input-' + type);
   addTagValue(type, inp.value);
   inp.value = '';
 };
@@ -1134,9 +1239,9 @@ window.removeTag = function (type, idx) {
   renderTags(type);
 };
 
-function renderTags(type) {
-  const wrap = document.getElementById('wrap-' + type);
-  const inp = document.getElementById('input-' + type);
+function renderTags(type: TagType): void {
+  const wrap = $('wrap-' + type);
+  const inp = $('input-' + type);
   wrap.querySelectorAll('.rtag').forEach(e => e.remove());
   tags[type].forEach((t, i) => {
     const el = document.createElement('span');
@@ -1149,8 +1254,8 @@ function renderTags(type) {
 // ══════════════════════════════════════════════
 // ADMIN
 // ══════════════════════════════════════════════
-function renderAdminOrgsUserFilterOptions() {
-  const sel = document.getElementById('admin-filter-usuario');
+function renderAdminOrgsUserFilterOptions(): void {
+  const sel = $select('admin-filter-usuario');
   const prev = sel.value;
   sel.innerHTML = '<option value="">Todos los usuarios</option>' +
     profiles.map(u => `<option value="${u.id}">${esc(u.nombre + ' ' + (u.apellido || ''))} (${esc(u.email || '')})</option>`).join('');
@@ -1161,9 +1266,9 @@ window.renderAdmin = function () {
   if (!currentProfile || currentProfile.role !== 'admin') return;
 
   renderAdminOrgsUserFilterOptions();
-  const filterUserId = document.getElementById('admin-filter-usuario').value;
-  const filterRol = document.getElementById('admin-filter-rol-usuario').value;
-  const oq = (document.getElementById('admin-search-orgs').value || '').toLowerCase();
+  const filterUserId = $select('admin-filter-usuario').value;
+  const filterRol = $select('admin-filter-rol-usuario').value;
+  const oq = ($input('admin-search-orgs').value || '').toLowerCase();
 
   const filteredOrgs = orgs.filter(o => {
     if (filterUserId) {
@@ -1175,8 +1280,8 @@ window.renderAdmin = function () {
     return true;
   });
 
-  document.getElementById('admin-orgs-count').textContent = filteredOrgs.length;
-  document.getElementById('admin-orgs-body').innerHTML = filteredOrgs.map(o => `
+  $('admin-orgs-count').textContent = String(filteredOrgs.length);
+  $('admin-orgs-body').innerHTML = filteredOrgs.map(o => `
     <tr>
       <td>${logoOrAvatar(o, 30)}</td>
       <td><strong>${esc(o.nombre)}</strong></td>
@@ -1193,18 +1298,18 @@ window.renderAdmin = function () {
     </tr>`).join('');
 
   if (!filteredOrgs.length) {
-    document.getElementById('admin-orgs-body').innerHTML = '<tr><td colspan="7" class="empty">Sin resultados para ese criterio.</td></tr>';
+    $('admin-orgs-body').innerHTML = '<tr><td colspan="7" class="empty">Sin resultados para ese criterio.</td></tr>';
   }
 
-  const uq = (document.getElementById('admin-search-users').value || '').toLowerCase();
+  const uq = ($input('admin-search-users').value || '').toLowerCase();
   const filteredUsers = profiles.filter(u => {
     if (!uq) return true;
     return [u.nombre, u.apellido, u.email, u.tel].join(' ').toLowerCase().includes(uq);
   });
-  document.getElementById('admin-users-count').textContent = filteredUsers.length;
+  $('admin-users-count').textContent = String(filteredUsers.length);
 
-  document.getElementById('admin-users-body').innerHTML = filteredUsers.map(u => {
-    const isSelf = u.id === currentProfile.id;
+  $('admin-users-body').innerHTML = filteredUsers.map(u => {
+    const isSelf = u.id === currentProfile!.id;
     const isAdmin = u.role === 'admin';
     return `
     <tr>
@@ -1220,7 +1325,7 @@ window.renderAdmin = function () {
   }).join('');
 
   if (!filteredUsers.length) {
-    document.getElementById('admin-users-body').innerHTML = '<tr><td colspan="6" class="empty">Sin resultados para ese criterio.</td></tr>';
+    $('admin-users-body').innerHTML = '<tr><td colspan="6" class="empty">Sin resultados para ese criterio.</td></tr>';
   }
 };
 
@@ -1232,7 +1337,7 @@ window.toggleUserRole = async function (userId, newRole) {
   try {
     await Auth.setUserRole(userId, newRole);
     await refreshData();
-    renderAdmin();
+    window.renderAdmin();
   } catch (e) {
     alert(friendlyError(e));
   }
@@ -1245,7 +1350,7 @@ window.deleteOrg = async function (id) {
   try {
     await Empresas.deleteEmpresa(id);
     await refreshData();
-    renderAdmin();
+    window.renderAdmin();
   } catch (e) {
     alert(friendlyError(e));
   }
@@ -1257,21 +1362,20 @@ window.deleteOrg = async function (id) {
 window.openAsignarUsuarios = function (empresaId) {
   const o = orgs.find(x => x.id === empresaId);
   if (!o) return;
-  document.getElementById('asig-empresa-id').value = empresaId;
-  document.getElementById('modal-asignar-title').textContent = 'Usuarios de: ' + o.nombre;
+  $input('asig-empresa-id').value = String(empresaId);
+  $('modal-asignar-title').textContent = 'Usuarios de: ' + o.nombre;
 
-  const duenoSel = document.getElementById('asig-dueno');
+  const duenoSel = $select('asig-dueno');
   duenoSel.innerHTML = '<option value="">— Sin administrador principal asignado —</option>' +
     profiles.map(u => `<option value="${u.id}" ${u.id === o.uid ? 'selected' : ''}>${esc(u.nombre + ' ' + (u.apellido || ''))} (${esc(u.email || '')})</option>`).join('');
 
   renderAsignarNuevoUsuarioSelect(empresaId);
   renderAsignarLista(empresaId);
-  document.getElementById('asig-msg').style.display = 'none';
-  document.getElementById('modal-asignar').classList.add('open');
+  $('asig-msg').style.display = 'none';
+  $('modal-asignar').classList.add('open');
 };
 
-function renderAsignarLista(empresaId) {
-  const o = orgs.find(x => x.id === empresaId);
+function renderAsignarLista(empresaId: number): void {
   const ids = asociaciones.filter(a => a.empresa_id === empresaId).map(a => a.user_id);
   const html = ids.length
     ? ids.map(uid => {
@@ -1280,33 +1384,33 @@ function renderAsignarLista(empresaId) {
         return `<div class="asig-item"><span>${esc(nombre)}</span><button class="btn-danger btn-sm" onclick="quitarUsuarioDeEmpresa(${empresaId}, '${uid}')" title="Quitar"><i class="ti ti-x"></i></button></div>`;
       }).join('')
     : '<p class="muted-sm">Sin usuarios adicionales.</p>';
-  document.getElementById('asig-lista').innerHTML = html;
+  $('asig-lista').innerHTML = html;
 }
 
-function renderAsignarNuevoUsuarioSelect(empresaId) {
+function renderAsignarNuevoUsuarioSelect(empresaId: number): void {
   const o = orgs.find(x => x.id === empresaId);
   const yaAsociados = new Set(asociaciones.filter(a => a.empresa_id === empresaId).map(a => a.user_id));
-  const disponibles = profiles.filter(u => u.id !== o.uid && !yaAsociados.has(u.id));
-  const sel = document.getElementById('asig-nuevo-usuario');
+  const disponibles = profiles.filter(u => u.id !== o?.uid && !yaAsociados.has(u.id));
+  const sel = $select('asig-nuevo-usuario');
   sel.innerHTML = disponibles.length
     ? disponibles.map(u => `<option value="${u.id}">${esc(u.nombre + ' ' + (u.apellido || ''))} (${esc(u.email || '')})</option>`).join('')
     : '<option value="">No hay más usuarios para agregar</option>';
 }
 
-function asigMsg(text, type) {
-  const msg = document.getElementById('asig-msg');
+function asigMsg(text: string, type: 'err' | 'ok'): void {
+  const msg = $('asig-msg');
   msg.textContent = text;
   msg.className = `form-msg ${type}`;
   msg.style.display = 'block';
 }
 
 window.cambiarDuenoEmpresa = async function () {
-  const empresaId = parseInt(document.getElementById('asig-empresa-id').value, 10);
-  const nuevoUid = document.getElementById('asig-dueno').value || null;
+  const empresaId = parseInt($input('asig-empresa-id').value, 10);
+  const nuevoUid = $select('asig-dueno').value || null;
   try {
     await Empresas.reasignarDueno(empresaId, nuevoUid);
     await refreshData();
-    renderAdmin();
+    window.renderAdmin();
     renderAsignarNuevoUsuarioSelect(empresaId);
     renderAsignarLista(empresaId);
     asigMsg('✓ Administrador principal actualizado.', 'ok');
@@ -1316,13 +1420,13 @@ window.cambiarDuenoEmpresa = async function () {
 };
 
 window.agregarUsuarioAEmpresa = async function () {
-  const empresaId = parseInt(document.getElementById('asig-empresa-id').value, 10);
-  const userId = document.getElementById('asig-nuevo-usuario').value;
+  const empresaId = parseInt($input('asig-empresa-id').value, 10);
+  const userId = $select('asig-nuevo-usuario').value;
   if (!userId) return;
   try {
     await Empresas.asignarUsuario(empresaId, userId);
     await refreshData();
-    renderAdmin();
+    window.renderAdmin();
     renderAsignarNuevoUsuarioSelect(empresaId);
     renderAsignarLista(empresaId);
     asigMsg('✓ Usuario agregado.', 'ok');
@@ -1336,7 +1440,7 @@ window.quitarUsuarioDeEmpresa = async function (empresaId, userId) {
   try {
     await Empresas.desasignarUsuario(empresaId, userId);
     await refreshData();
-    renderAdmin();
+    window.renderAdmin();
     renderAsignarNuevoUsuarioSelect(empresaId);
     renderAsignarLista(empresaId);
   } catch (e) {

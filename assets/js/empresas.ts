@@ -2,26 +2,29 @@
 // CRUD de empresas + subida de logos (Supabase real)
 // Mapea entre camelCase (JS) y snake_case (columnas Postgres)
 // ══════════════════════════════════════════════
-import { getSupabase } from './supabaseClient.js';
+import { getSupabase } from './supabaseClient.ts';
+import type { Database, Empresa, EmpresaFields, EmpresaInput, EmpresaRow, EmpresaUsuarioRow } from './types.ts';
 
-function fromDb(row) {
+type EmpresaInsert = Database['public']['Tables']['empresas']['Insert'];
+
+function fromDb(row: EmpresaRow): Empresa {
   return {
     id: row.id,
     uid: row.uid,
     cuit: row.cuit,
     tipo: row.tipo,
     nombre: row.nombre,
-    sector: row.sector,
-    calle: row.calle,
-    ciudad: row.ciudad,
-    provincia: row.provincia,
-    pais: row.pais,
-    referente: row.referente,
-    cargo: row.cargo,
-    emailOrg: row.email_org,
-    tel: row.tel,
-    web: row.web,
-    desc: row.descripcion,
+    sector: row.sector ?? '',
+    calle: row.calle ?? '',
+    ciudad: row.ciudad ?? '',
+    provincia: row.provincia ?? '',
+    pais: row.pais ?? '',
+    referente: row.referente ?? '',
+    cargo: row.cargo ?? '',
+    emailOrg: row.email_org ?? '',
+    tel: row.tel ?? '',
+    web: row.web ?? '',
+    desc: row.descripcion ?? '',
     logo: row.logo,
     ofertas: row.ofertas || [],
     instalaciones: row.instalaciones || [],
@@ -30,8 +33,8 @@ function fromDb(row) {
   };
 }
 
-function toDb(o) {
-  const out = {};
+function toDb(o: EmpresaInput): Partial<EmpresaRow> {
+  const out: Partial<EmpresaRow> = {};
   if ('cuit' in o) out.cuit = o.cuit;
   if ('tipo' in o) out.tipo = o.tipo;
   if ('nombre' in o) out.nombre = o.nombre;
@@ -54,40 +57,49 @@ function toDb(o) {
   return out;
 }
 
-export async function listEmpresas() {
+export async function listEmpresas(): Promise<Empresa[]> {
   const supabase = await getSupabase();
   const { data, error } = await supabase.from('empresas').select('*').order('created_at', { ascending: false });
   if (error) throw error;
   return data.map(fromDb);
 }
 
-export async function createEmpresa(uid, payload) {
+// cuit y nombre son obligatorios en el formulario de alta (ver
+// main.ts/guardarOrg), así que acá se piden siempre: evita tener que
+// castear el insert para satisfacer las columnas not null de la tabla.
+export async function createEmpresa(
+  uid: string,
+  payload: EmpresaInput & Pick<EmpresaFields, 'cuit' | 'nombre'>
+): Promise<Empresa> {
   const supabase = await getSupabase();
-  const { data, error } = await supabase.from('empresas').insert({ uid, ...toDb(payload) }).select().single();
+  const insertPayload: EmpresaInsert = { uid, ...toDb(payload) } as EmpresaInsert;
+  const { data, error } = await supabase.from('empresas').insert(insertPayload).select().single();
   if (error) throw error;
   return fromDb(data);
 }
 
-export async function updateEmpresa(id, payload) {
+// Acepta id como string porque main.ts a veces lo saca de un campo de
+// formulario (hidden input) sin convertir; Postgrest necesita el número.
+export async function updateEmpresa(id: number | string, payload: EmpresaInput): Promise<Empresa> {
   const supabase = await getSupabase();
-  const { data, error } = await supabase.from('empresas').update(toDb(payload)).eq('id', id).select().single();
+  const { data, error } = await supabase.from('empresas').update(toDb(payload)).eq('id', Number(id)).select().single();
   if (error) throw error;
   return fromDb(data);
 }
 
-export async function deleteEmpresa(id) {
+export async function deleteEmpresa(id: number): Promise<void> {
   const supabase = await getSupabase();
   const { error } = await supabase.from('empresas').delete().eq('id', id);
   if (error) throw error;
 }
 
 // ══════════════════════════════════════════════
-// ASIGNACIÓN DE EMPRESAS A USUARIOS (solo admin, ver sql/009)
+// ASIGNACIÓN DE EMPRESAS A USUARIOS (solo admin, ver sql/historial/009)
 // ══════════════════════════════════════════════
 
 // Cambia el administrador principal de una empresa (empresas.uid).
 // userId puede ser null para dejarla sin administrador principal asignado.
-export async function reasignarDueno(empresaId, userId) {
+export async function reasignarDueno(empresaId: number, userId: string | null): Promise<Empresa> {
   const supabase = await getSupabase();
   const { data, error } = await supabase.from('empresas').update({ uid: userId }).eq('id', empresaId).select().single();
   if (error) throw error;
@@ -95,40 +107,47 @@ export async function reasignarDueno(empresaId, userId) {
 }
 
 // Trae todas las asociaciones empresa↔usuario adicionales (además del administrador principal).
-export async function listAsociaciones() {
+export async function listAsociaciones(): Promise<EmpresaUsuarioRow[]> {
   const supabase = await getSupabase();
   const { data, error } = await supabase.from('empresa_usuarios').select('*');
   if (error) throw error;
   return data;
 }
 
-export async function asignarUsuario(empresaId, userId) {
+export async function asignarUsuario(empresaId: number, userId: string): Promise<void> {
   const supabase = await getSupabase();
   const { error } = await supabase.from('empresa_usuarios').insert({ empresa_id: empresaId, user_id: userId });
   if (error) throw error;
 }
 
-export async function desasignarUsuario(empresaId, userId) {
+export async function desasignarUsuario(empresaId: number, userId: string): Promise<void> {
   const supabase = await getSupabase();
   const { error } = await supabase.from('empresa_usuarios').delete().eq('empresa_id', empresaId).eq('user_id', userId);
   if (error) throw error;
 }
 
 const MAX_LOGO_BYTES = 800_000; // 800 KB
-const ALLOWED_LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml', 'image/gif'];
+// SVG queda afuera a propósito: es un formato de imagen "con código" (puede
+// llevar <script> embebido) y el bucket de logos es público. Insertado con
+// <img> el navegador no ejecuta ese script, pero si alguien abre la URL
+// cruda del archivo en una pestaña nueva, Supabase Storage la sirve con
+// content-type image/svg+xml y ahí sí se ejecutaría — un XSS persistente
+// vía archivo público. El resto de los formatos son solo píxeles, sin ese
+// riesgo.
+const ALLOWED_LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 
-export function validateLogoFile(file) {
+export function validateLogoFile(file: File): void {
   if (!ALLOWED_LOGO_TYPES.includes(file.type)) {
-    throw new Error('Formato de imagen no soportado. Usá PNG, JPG, WEBP, GIF o SVG.');
+    throw new Error('Formato de imagen no soportado. Usá PNG, JPG, WEBP o GIF.');
   }
   if (file.size > MAX_LOGO_BYTES) {
     throw new Error('El logo es demasiado grande. Usá una imagen menor a 800 KB.');
   }
 }
 
-// Sube el logo al bucket público "logos" (ver sql/002_migration_v2.sql)
+// Sube el logo al bucket público "logos" (ver sql/001_schema.sql)
 // y devuelve la URL pública para guardar en empresas.logo
-export async function uploadLogo(file, uid) {
+export async function uploadLogo(file: File, uid: string): Promise<string> {
   validateLogoFile(file);
   const supabase = await getSupabase();
   const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';

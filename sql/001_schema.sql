@@ -39,7 +39,11 @@ create table if not exists public.profiles (
 -- EMPRESAS
 create table if not exists public.empresas (
   id bigserial primary key,
-  uid uuid references public.profiles(id) on delete cascade,
+  -- on delete SET NULL (no cascade): si se borra la cuenta del
+  -- administrador principal, la empresa queda "sin administrador principal
+  -- asignado" (estado ya soportado desde el panel Admin) en vez de
+  -- desaparecer junto con los usuarios asociados que todavía la necesitan.
+  uid uuid references public.profiles(id) on delete set null,
   cuit text unique not null,
   tipo text default 'Empresa',
   nombre text not null,
