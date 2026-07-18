@@ -39,6 +39,8 @@ CUPFI/
 │   ├── 011_empresa_uid_on_delete_set_null.sql # Migración para el proyecto ya existente (ver más abajo)
 │   └── historial/                         # Migraciones ya aplicadas al proyecto actual (solo referencia,
 │                                           # no hace falta correrlas en un proyecto nuevo: 001 ya las incluye)
+├── supabase/functions/admin-update-user/  # Edge Function (opcional): admin edita email/contraseña
+│                                           # de cualquier usuario sin verificación (ver más abajo)
 └── README.md
 ```
 
@@ -79,10 +81,13 @@ CUPFI/
 - La clave que usa el navegador (`sb_publishable_...`) es la **publishable
   key** de Supabase: está pensada para exponerse públicamente en el cliente.
   La protección real la da RLS, no el secreto de esa clave.
-- **Nunca** se usa ni se debe agregar la `service_role key` en este proyecto:
-  esa clave sí es secreta, se salta RLS por completo y solo debería usarse
-  desde un backend (por ejemplo una Supabase Edge Function), nunca en código
-  que corre en el navegador.
+- La `service_role key` (secreta, se salta RLS por completo) **nunca debe
+  estar en código que corre en el navegador**. La única excepción en este
+  proyecto es la Edge Function opcional
+  [`supabase/functions/admin-update-user`](supabase/functions/admin-update-user/index.ts)
+  (ver "Edición de usuarios por un admin" más abajo): corre en el servidor
+  de Supabase, no en el sitio, y valida que quien la llama sea admin antes
+  de usar esa clave.
 - Por eso, borrar cuentas de usuario (no solo empresas) **no está
   implementado en el navegador**: hacerlo requeriría la `service_role key`
   del lado del cliente, lo cual sería un riesgo de seguridad grave. Para dar
@@ -224,6 +229,52 @@ el dominio y cargar los registros DNS (SPF/DKIM) que da Resend en el
 proveedor donde está registrado el dominio; una vez verificado, cambiar el
 "Sender email" en Supabase a una dirección de ese dominio (por ejemplo
 `no-reply@turedcupfi.com`). No hace falta cambiar nada más.
+
+### Edición de usuarios por un admin, sin verificación (opcional)
+
+Desde el panel Admin → Usuarios registrados, un admin puede editar el
+nombre/apellido/teléfono de cualquier usuario directamente (ya funciona sin
+pasos extra: la política RLS de `profiles` ya lo permite). Además, con el
+botón "Editar usuario" (ícono de lápiz) el admin puede cambiar también el
+**email y la contraseña de cualquier cuenta, aplicándose al instante, sin
+que Supabase mande ningún link de confirmación ni de restablecer
+contraseña**.
+
+**Trade-off de seguridad, a propósito:** ese link de confirmación existe
+justamente para que nadie pueda "robarse" una cuenta ajena cambiándole el
+email o la contraseña sin que su dueño se entere. Esta funcionalidad se
+salta esa protección deliberadamente, para que un admin pueda resolver
+casos como un usuario que perdió acceso a su email o escribió mal sus
+datos al registrarse. Cualquier cuenta admin puede hacer esto sobre
+cualquier otra cuenta (mismo nivel de confianza que ya existe hoy entre
+admins para cambiar roles).
+
+Técnicamente, cambiar el email/contraseña de OTRO usuario requiere la
+Admin API de Supabase Auth, que solo funciona con la `service_role key` —
+esa clave nunca debe estar en el navegador (ver "Cómo funciona la
+seguridad" más arriba). Por eso esta pieza corre en una **Edge Function**
+(código en el servidor de Supabase, no en el sitio):
+[`supabase/functions/admin-update-user/index.ts`](supabase/functions/admin-update-user/index.ts).
+Sin desplegarla, el resto de la app funciona igual, pero el botón "Editar
+usuario" va a fallar al intentar cambiar email o contraseña.
+
+**Desplegarla (una sola vez, desde el dashboard de Supabase, sin instalar
+nada):**
+
+1. Dashboard de tu proyecto → **Edge Functions** → **Create a new
+   function**.
+2. Nombre: `admin-update-user` (tiene que ser exactamente ese nombre).
+3. Pegar el contenido completo de
+   [`supabase/functions/admin-update-user/index.ts`](supabase/functions/admin-update-user/index.ts).
+4. **Deploy**. No hace falta configurar ningún secreto a mano:
+   `SUPABASE_URL`, `SUPABASE_ANON_KEY` y `SUPABASE_SERVICE_ROLE_KEY` ya
+   están disponibles automáticamente en toda Edge Function del proyecto.
+
+**Probarla:** desde el panel Admin, abrí "Editar usuario" en una cuenta de
+prueba (no una real) y cambiale el teléfono (debe aplicar al toque),
+después el email (deberías poder loguearte YA con el email nuevo, sin
+ningún click de confirmación) y la contraseña (ídem, login inmediato con
+la nueva).
 
 ## Publicar el sitio (GitHub Pages)
 

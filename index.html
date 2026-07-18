@@ -316,7 +316,7 @@
         <span class="count-pill" id="admin-orgs-count">0</span>
       </div>
       <div class="table-wrap">
-        <table class="admin-table">
+        <table class="admin-table admin-table-orgs">
           <thead><tr><th>Logo</th><th>Empresa</th><th>CUIT</th><th>Sector</th><th>Referente</th><th>Ubicación</th><th>Acciones</th></tr></thead>
           <tbody id="admin-orgs-body"></tbody>
         </table>
@@ -330,7 +330,7 @@
         <span class="count-pill" id="admin-users-count">0</span>
       </div>
       <div class="table-wrap">
-        <table class="admin-table">
+        <table class="admin-table admin-table-users">
           <thead><tr><th>Nombre</th><th>Email</th><th>Teléfono</th><th>Empresas</th><th>Rol</th><th>Acciones</th></tr></thead>
           <tbody id="admin-users-body"></tbody>
         </table>
@@ -425,6 +425,36 @@
       </div>
     </div>
     <div class="form-msg" id="asig-msg"></div>
+  </div>
+</div>
+
+<!-- MODAL: EDITAR USUARIO (admin, sin verificación) -->
+<div class="modal-overlay" id="modal-editar-usuario">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2 id="modal-editar-usuario-title">Editar usuario</h2>
+      <button class="modal-close" onclick="closeModal('modal-editar-usuario')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="note-box">Los cambios se aplican de inmediato, sin pedirle confirmación al usuario (ni link de confirmación de email, ni email de restablecer contraseña).</div>
+    <input type="hidden" id="eu-id">
+    <div class="form-group"><label class="form-label">Nombre *</label><input class="form-input" id="eu-nombre" type="text"></div>
+    <div class="form-group"><label class="form-label">Apellido *</label><input class="form-input" id="eu-apellido" type="text"></div>
+    <div class="form-group"><label class="form-label">Teléfono</label><input class="form-input" id="eu-tel" type="text" placeholder="+54 11 1234-5678"></div>
+    <div class="form-group"><label class="form-label">Email *</label><input class="form-input" id="eu-email" type="email"></div>
+    <div class="pf-divider"></div>
+    <div class="form-group">
+      <label class="form-label">Nueva contraseña <span class="label-note">(opcional, dejar vacío para no cambiarla)</span></label>
+      <input class="form-input" id="eu-pass" type="password" placeholder="••••••••">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Confirmar nueva contraseña</label>
+      <input class="form-input" id="eu-pass2" type="password" placeholder="••••••••">
+    </div>
+    <div class="action-row">
+      <button class="btn-prim" onclick="guardarEdicionUsuario()"><i class="ti ti-check"></i> Guardar</button>
+      <button class="btn-out" onclick="closeModal('modal-editar-usuario')">Cancelar</button>
+    </div>
+    <div class="form-msg" id="eu-msg"></div>
   </div>
 </div>
 

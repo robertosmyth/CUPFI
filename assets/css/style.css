@@ -206,9 +206,22 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:#f5f4fc;}
 .admin-table td{font-size:12px;padding:8px 12px;border-bottom:1px solid #f0eeff;vertical-align:middle;}
 .admin-table tr:last-child td{border-bottom:none;}
 .admin-table tr:hover td{background:var(--fi-light);}
+/* La columna "Acciones" (siempre la última) queda pegada al borde
+   derecho al scrollear la tabla horizontalmente en pantallas chicas, así
+   los botones de acción (editar, borrar, etc.) están siempre alcanzables
+   sin tener que llegar hasta el final del scroll. */
+.admin-table th:last-child, .admin-table td:last-child{position:sticky;right:0;background:#fff;box-shadow:-6px 0 6px -6px rgba(0,0,0,.15);}
+.admin-table th:last-child{background:var(--fi);z-index:2;}
+.admin-table td:last-child{z-index:1;}
+.admin-table tr:hover td:last-child{background:var(--fi-light);}
 .admin-section-title{font-size:13px;font-weight:600;color:var(--fi);margin-bottom:1rem;display:flex;align-items:center;gap:6px;}
 .admin-badge{font-size:10px;background:#fff8e1;color:#f57f17;padding:2px 8px;border-radius:10px;font-weight:600;}
 .action-btns{display:flex;gap:4px;flex-wrap:nowrap;}
+/* Sin esto, un contenedor angosto (tabla scrolleada en mobile) puede
+   encoger un botón por debajo del ancho que necesita su texto ("Hacer
+   admin"), partiéndolo en dos líneas en vez de dejar que el contenedor
+   overflow-e (que es lo que ya sabe manejar .table-wrap). */
+.action-btns button{flex-shrink:0;}
 
 /* GLOBAL LOADING / NOTICES */
 .app-loading{min-height:100vh;display:flex;align-items:center;justify-content:center;color:var(--fi-gray);font-size:13px;}
@@ -292,9 +305,12 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:#f5f4fc;}
    ══════════════════════════════════════════════ */
 @media (max-width: 780px){
   .topbar{flex-wrap:wrap;height:auto;padding:.75rem 1rem;gap:8px;}
-  .tabs{margin-left:0;width:100%;overflow-x:auto;flex-wrap:nowrap;padding-bottom:4px;}
-  .tab-btn{flex-shrink:0;}
-  .user-pill{margin-left:0;}
+  /* Antes esta barra se desbordaba y había que deslizarla horizontalmente
+     sin ningún indicio visual de que había más pestañas (incluida
+     "Admin") fuera de pantalla. Ahora las pestañas hacen wrap a varias
+     líneas: se ven todas de entrada, sin scroll oculto. */
+  .tabs{margin-left:0;width:100%;flex-wrap:wrap;}
+  .user-pill{margin-left:0;width:100%;justify-content:center;}
   .stats-grid{grid-template-columns:repeat(2,1fr);}
   .form-row,.form-row-2{grid-template-columns:1fr;}
   .vc{grid-template-columns:1fr;text-align:center;}
@@ -303,6 +319,35 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:#f5f4fc;}
   .modal{max-width:100%;margin:0;border-radius:0;min-height:100vh;}
   .modal-overlay{padding:0;}
   .main{padding:1rem;}
+  /* Las tablas de Admin tienen demasiadas columnas para el ancho de un
+     celular: aunque "Acciones" queda fija al borde (ver .admin-table
+     th/td:last-child más arriba), con todas las columnas hay que
+     scrollear mucho para llegar a ella. Se ocultan las menos
+     importantes para que la fila entre en bastante menos ancho. */
+  .admin-table-orgs th:nth-child(3), .admin-table-orgs td:nth-child(3), /* CUIT */
+  .admin-table-orgs th:nth-child(6), .admin-table-orgs td:nth-child(6) { /* Ubicación */
+    display:none;
+  }
+  .admin-table-users th:nth-child(3), .admin-table-users td:nth-child(3), /* Teléfono */
+  .admin-table-users th:nth-child(4), .admin-table-users td:nth-child(4) { /* Empresas */
+    display:none;
+  }
+  /* Un nombre o email largo sin límite puede seguir empujando la tabla
+     entera de ancho, aunque se hayan sacado columnas. Se trunca con "…"
+     todo lo que no sea la columna de Acciones (esa nunca debe recortar
+     los botones). */
+  .admin-table th:not(:last-child), .admin-table td:not(:last-child){
+    max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  /* La fila de empresas tiene hasta 4 botones de solo ícono en Acciones;
+     el padding de .btn-loc/.btn-danger/.btn-edit-inline/.btn-icon está
+     pensado también para botones con texto, acá sobra y hace que la
+     columna sea más ancha de lo necesario. OJO: no se toca .btn-out a
+     secas, porque esa misma clase se usa para "Hacer admin"/"Quitar
+     admin" (con texto) en la tabla de usuarios. */
+  .action-btns .btn-icon, .action-btns .btn-loc, .action-btns .btn-danger, .action-btns .btn-edit-inline{
+    padding:6px 8px;
+  }
 }
 @media (max-width: 480px){
   .stats-grid{grid-template-columns:1fr 1fr;}

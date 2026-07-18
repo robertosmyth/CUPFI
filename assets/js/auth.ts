@@ -154,6 +154,51 @@ export async function updateOwnProfile({ nombre, apellido, tel }: UpdateOwnProfi
   return data;
 }
 
+export interface AdminUpdateProfileArgs {
+  nombre: string;
+  apellido: string;
+  tel: string;
+}
+
+// Igual que updateOwnProfile, pero para que un admin edite el perfil de
+// OTRO usuario (nombre/apellido/tel). Permitido por RLS porque la
+// política de UPDATE de profiles ya deja pasar "auth.uid() = id or es
+// admin" (ver sql/001_schema.sql) — no hace falta la Edge Function para
+// esto, a diferencia de email/password (ver adminUpdateUserAuth).
+export async function adminUpdateProfile(userId: string, { nombre, apellido, tel }: AdminUpdateProfileArgs): Promise<Profile | null> {
+  const supabase = await getSupabase();
+  const { data, error } = await supabase
+    .from('profiles')
+    .update({ nombre, apellido, tel })
+    .eq('id', userId)
+    .select()
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export interface AdminUpdateUserAuthArgs {
+  email?: string;
+  password?: string;
+}
+
+// Cambia el email y/o la contraseña de OTRO usuario SIN pasar por el
+// flujo normal de verificación (sin link de confirmación, sin email de
+// reset) — se aplica al instante. A propósito esto no se puede hacer solo
+// con código de cliente: requiere la Admin API de Supabase Auth, que
+// necesita la service_role key (nunca debe estar en el navegador). Por
+// eso delega en la Edge Function "admin-update-user"
+// (ver supabase/functions/admin-update-user/index.ts), que valida del
+// lado del servidor que quien llama es admin antes de usar esa clave.
+export async function adminUpdateUserAuth(userId: string, { email, password }: AdminUpdateUserAuthArgs): Promise<void> {
+  const supabase = await getSupabase();
+  const { data, error } = await supabase.functions.invoke('admin-update-user', {
+    body: { userId, email, password },
+  });
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
+}
+
 // Envía el email de "restablecer contraseña". redirectTo apunta a la misma
 // página (Site URL configurado en Supabase); al volver, Supabase dispara
 // el evento 'PASSWORD_RECOVERY' que main.js escucha para mostrar el

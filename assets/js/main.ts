@@ -54,6 +54,8 @@ declare global {
     renderAdmin(): void;
     toggleUserRole(userId: string, newRole: string): Promise<void>;
     deleteOrg(id: number): Promise<void>;
+    openEditarUsuario(userId: string): void;
+    guardarEdicionUsuario(): Promise<void>;
     openAsignarUsuarios(empresaId: number): void;
     cambiarDuenoEmpresa(): Promise<void>;
     agregarUsuarioAEmpresa(): Promise<void>;
@@ -1292,7 +1294,7 @@ window.renderAdmin = function () {
       <td><div class="action-btns">
         <button class="btn-edit-inline" onclick="startEdit(${o.id})" title="Editar empresa"><i class="ti ti-pencil"></i></button>
         <button class="btn-loc" onclick="openEditUbicacion(${o.id})" title="Editar ubicación"><i class="ti ti-map-pin"></i></button>
-        <button class="btn-out" onclick="openAsignarUsuarios(${o.id})" title="Usuarios asociados"><i class="ti ti-users"></i></button>
+        <button class="btn-out btn-icon" onclick="openAsignarUsuarios(${o.id})" title="Usuarios asociados"><i class="ti ti-users"></i></button>
         <button class="btn-danger" onclick="deleteOrg(${o.id})" title="Eliminar empresa (esta acción no se puede deshacer)"><i class="ti ti-trash"></i></button>
       </div></td>
     </tr>`).join('');
@@ -1318,9 +1320,12 @@ window.renderAdmin = function () {
       <td class="td-sm">${esc(u.tel || '—')}</td>
       <td class="td-sm">${orgs.filter(o => esUsuarioDeEmpresa(o, u.id)).length}</td>
       <td><span class="role-badge ${isAdmin ? 'role-badge--admin' : 'role-badge--user'}">${isAdmin ? 'Admin' : 'Usuario'}</span></td>
-      <td>${isSelf
-        ? '<span class="muted-sm">No podés cambiar tu propio rol</span>'
-        : `<button class="btn-out" onclick="toggleUserRole('${u.id}','${isAdmin ? 'user' : 'admin'}')">${isAdmin ? 'Quitar admin' : 'Hacer admin'}</button>`}</td>
+      <td><div class="action-btns">
+        <button class="btn-edit-inline" onclick="openEditarUsuario('${u.id}')" title="Editar usuario (nombre, email, contraseña...)"><i class="ti ti-pencil"></i></button>
+        ${isSelf
+          ? '<span class="muted-sm">No podés cambiar tu propio rol</span>'
+          : `<button class="btn-out" onclick="toggleUserRole('${u.id}','${isAdmin ? 'user' : 'admin'}')">${isAdmin ? 'Quitar admin' : 'Hacer admin'}</button>`}
+      </div></td>
     </tr>`;
   }).join('');
 
@@ -1353,6 +1358,82 @@ window.deleteOrg = async function (id) {
     window.renderAdmin();
   } catch (e) {
     alert(friendlyError(e));
+  }
+};
+
+// ══════════════════════════════════════════════
+// EDITAR USUARIO (admin, sin verificación — ver auth.ts/adminUpdateUserAuth
+// y supabase/functions/admin-update-user/index.ts)
+// ══════════════════════════════════════════════
+window.openEditarUsuario = function (userId) {
+  const u = getProfileById(userId);
+  if (!u) return;
+  $input('eu-id').value = u.id;
+  $input('eu-nombre').value = u.nombre || '';
+  $input('eu-apellido').value = u.apellido || '';
+  $input('eu-tel').value = u.tel || '';
+  $input('eu-email').value = u.email || '';
+  $input('eu-pass').value = '';
+  $input('eu-pass2').value = '';
+  $('eu-msg').style.display = 'none';
+  $('modal-editar-usuario-title').textContent = 'Editar usuario: ' + `${u.nombre} ${u.apellido}`.trim();
+  $('modal-editar-usuario').classList.add('open');
+};
+
+window.guardarEdicionUsuario = async function () {
+  const userId = $input('eu-id').value;
+  const nombre = $input('eu-nombre').value.trim();
+  const apellido = $input('eu-apellido').value.trim();
+  const tel = $input('eu-tel').value.trim();
+  const email = $input('eu-email').value.trim();
+  const pass = $input('eu-pass').value;
+  const pass2 = $input('eu-pass2').value;
+  const msg = $('eu-msg');
+
+  if (!nombre || !apellido) {
+    msg.textContent = 'Nombre y apellido son obligatorios.'; msg.className = 'form-msg err'; msg.style.display = 'block'; return;
+  }
+  if (!email || !isValidEmail(email)) {
+    msg.textContent = 'Ingresá un email válido.'; msg.className = 'form-msg err'; msg.style.display = 'block'; return;
+  }
+  if (pass && pass.length < 8) {
+    msg.textContent = 'La contraseña debe tener al menos 8 caracteres.'; msg.className = 'form-msg err'; msg.style.display = 'block'; return;
+  }
+  if (pass !== pass2) {
+    msg.textContent = 'Las contraseñas no coinciden.'; msg.className = 'form-msg err'; msg.style.display = 'block'; return;
+  }
+
+  const target = getProfileById(userId);
+  if (!target) return;
+  const nombreCompleto = `${nombre} ${apellido}`.trim();
+  if (!confirm(`¿Aplicar estos cambios a la cuenta de "${nombreCompleto}"? Se aplican de inmediato, sin pedirle confirmación al usuario.`)) return;
+
+  try {
+    const dup = await Auth.checkProfileDuplicates({ nombre, apellido, tel, email, excludeId: userId });
+    if (dup.nombre_apellido) throw new Error('Ya existe otro usuario con ese nombre y apellido.');
+    if (dup.email) throw new Error('Ya existe otro usuario con ese email.');
+    if (dup.tel) throw new Error('Ya existe otro usuario con ese teléfono móvil.');
+
+    await Auth.adminUpdateProfile(userId, { nombre, apellido, tel });
+
+    const emailChanged = email !== (target.email || '');
+    if (emailChanged || pass) {
+      await Auth.adminUpdateUserAuth(userId, {
+        email: emailChanged ? email : undefined,
+        password: pass || undefined,
+      });
+    }
+
+    await refreshData();
+    window.renderAdmin();
+    msg.textContent = '✓ Usuario actualizado.';
+    msg.className = 'form-msg ok';
+    msg.style.display = 'block';
+    setTimeout(() => window.closeModal('modal-editar-usuario'), 900);
+  } catch (e) {
+    msg.textContent = friendlyError(e);
+    msg.className = 'form-msg err';
+    msg.style.display = 'block';
   }
 };
 
