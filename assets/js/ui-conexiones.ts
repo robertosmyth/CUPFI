@@ -31,6 +31,18 @@ let vinVista: 'mias' | 'red' = 'mias';
 let vinFiltro: 'todos' | 'exacta' | 'categoria' = 'todos';
 let ultimasVistas: ConexionVista[] = [];
 
+// Las coincidencias entre OTRAS empresas (quién podría proveerle a quién)
+// son privadas de cada empresa: solo las ven admins y webmasters.
+export function puedeVerRed(): boolean {
+  return app().currentProfile?.role === 'admin';
+}
+
+// Conexiones de mis empresas que esperan algo: sugeridas, esperando a la
+// otra empresa o esperando mi respuesta (para el contador del inicio).
+export function contarMisPendientes(): number {
+  return misVistas().filter(v => v.vigente && (v.estado === 'sugerida' || v.estado === 'otra_acepto' || v.estado === 'esperando_otra')).length;
+}
+
 function misVistas(): ConexionVista[] {
   const c = app();
   const sug = calcularSugerencias(c.orgs, c.categorias);
@@ -153,7 +165,7 @@ function coincideBusqueda(q: string, necesita: string, ofrece: string, categoria
 window.setVinVista = function (el, vista) {
   document.querySelectorAll('#vin-vistas .chip').forEach(c => c.classList.remove('active'));
   el.classList.add('active');
-  vinVista = vista === 'red' ? 'red' : 'mias';
+  vinVista = vista === 'red' && puedeVerRed() ? 'red' : 'mias';
   window.renderVin();
 };
 
@@ -168,6 +180,13 @@ window.renderVin = function () {
   const c = app();
   const q = ($<HTMLInputElement>('search-vin').value || '').toLowerCase();
   const list = $('vin-list');
+  // La vista "Toda la red" solo existe para admins y webmasters.
+  const verRed = puedeVerRed();
+  $('vin-vistas').classList.toggle('hidden', !verRed);
+  if (!verRed && vinVista === 'red') {
+    vinVista = 'mias';
+    document.querySelectorAll('#vin-vistas .chip').forEach((c, i) => c.classList.toggle('active', i === 0));
+  }
   $('vin-hint-mias').classList.toggle('hidden', vinVista !== 'mias');
   $('vin-hint-red').classList.toggle('hidden', vinVista !== 'red');
 
@@ -211,7 +230,17 @@ window.renderVin = function () {
     }
     return `<div class="cx-seccion"><div class="cx-seccion-titulo"><i class="ti ${sec.icono}"></i> ${sec.titulo} <span class="count-pill">${items.length}</span></div>${cuerpo}</div>`;
   }).join('');
-  list.innerHTML = html || '<div class="empty"><i class="ti ti-arrows-exchange"></i>Todavía no hay conexiones para tus empresas. Cuantas más ofertas y necesidades cargues (con categoría y subcategoría), más coincidencias vas a encontrar.</div>';
+  if (html) { list.innerHTML = html; return; }
+  // Sin conexiones: si sus ítems siguen en "Otros" (formato anterior), es
+  // casi seguro el motivo, porque "Otros" solo conecta con detalle idéntico.
+  const mias = c.orgs.filter(o => c.misEmpresas().has(o.id));
+  const enOtros = mias.filter(o => o.items.some(i => c.categoriaById(i.categoriaId)?.esOtros));
+  list.innerHTML = `<div class="empty"><i class="ti ti-arrows-exchange"></i>Todavía no hay conexiones para tus empresas.
+    ${enOtros.length
+      ? `<br><br>Ofertas o necesidades de ${enOtros.map(o => `<strong>${esc(o.nombre)}</strong>`).join(', ')} están en la categoría <em>Otros</em>,
+         que solo conecta cuando el detalle es idéntico. Asignales la categoría que corresponda para encontrar coincidencias.<br><br>
+         <button class="btn-prim" onclick="startEdit(${enOtros[0].id})"><i class="ti ti-pencil"></i> Editar ${esc(enOtros[0].nombre)}</button>`
+      : ' Cuantas más ofertas y necesidades cargues (con categoría y subcategoría), más coincidencias vas a encontrar.'}</div>`;
 };
 
 window.responderConexion = async function (key, accion) {
@@ -392,6 +421,8 @@ export function initConexionesUI(): void {
 
 // Para cerrar el chat al salir de la app (logout) sin dejar el refresco andando.
 export function resetConexionesUI(): void {
+  vinVista = 'mias';
+  document.querySelectorAll('#vin-vistas .chip').forEach((c, i) => c.classList.toggle('active', i === 0));
   window.cerrarChat();
   window.cerrarMatch();
 }

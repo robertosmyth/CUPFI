@@ -477,3 +477,6 @@ details.cx-seccion > summary::-webkit-details-marker{display:none;}
   .wm-table th:not(:last-child), .wm-table td:not(:last-child){max-width:none;white-space:normal;}
   .guia-wrap{right:10px;bottom:10px;}
 }
+
+.stat-card--link{cursor:pointer;}
+.stat-card--link:hover{box-shadow:0 4px 14px rgba(59,36,200,.15);}
