@@ -874,6 +874,18 @@ revoke execute on function public.enviar_mensaje(bigint, text) from public, anon
 revoke execute on function public.webmaster_contacto_resumen() from public, anon;
 revoke execute on function public.marcar_guia_vista() from public, anon;
 
+-- Chequeos usados por las políticas RLS: solo usuarios con sesión.
+revoke execute on function public.fn_es_admin(uuid) from public, anon;
+revoke execute on function public.fn_es_webmaster(uuid) from public, anon;
+revoke execute on function public.fn_es_usuario_empresa(bigint, uuid) from public, anon;
+-- Funciones de trigger: nunca se llaman directamente.
+revoke execute on function public.fn_log_profiles() from public, anon, authenticated;
+revoke execute on function public.fn_log_empresas() from public, anon, authenticated;
+revoke execute on function public.fn_log_empresa_usuarios() from public, anon, authenticated;
+revoke execute on function public.fn_log_categorias() from public, anon, authenticated;
+revoke execute on function public.fn_proteger_otros() from public, anon, authenticated;
+alter function public.fn_norm(text) set search_path = public;
+
 grant execute on function public.fn_es_admin(uuid) to authenticated;
 grant execute on function public.fn_es_webmaster(uuid) to authenticated;
 grant execute on function public.fn_es_usuario_empresa(bigint, uuid) to authenticated;
