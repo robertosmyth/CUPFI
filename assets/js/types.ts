@@ -29,6 +29,8 @@ export type ProfileRow = {
   email: string | null;
   tel: string | null;
   role: string;
+  is_webmaster: boolean;
+  guia_vista: boolean;
   created_at: string;
 };
 
@@ -54,8 +56,77 @@ export type EmpresaRow = {
   instalaciones: string[];
   needs_uncovered: string[];
   needs_covered: string[];
+  items_migrados: boolean;
   created_at: string;
   updated_at: string;
+};
+
+// ─── Etapa 1 (ver sql/012_etapa1_conexiones.sql) ───────────────────
+export type CategoriaRow = {
+  id: number;
+  nombre: string;
+  subcategorias: string[];
+  orden: number;
+  es_otros: boolean;
+  created_at: string;
+};
+
+export type ItemTipo = 'oferta' | 'necesidad';
+
+export type EmpresaItemRow = {
+  id: number;
+  empresa_id: number;
+  tipo: ItemTipo;
+  categoria_id: number;
+  subcategoria: string;
+  revisar: boolean;
+  created_at: string;
+};
+
+export type ConexionRow = {
+  id: number;
+  empresa_necesita_id: number;
+  empresa_ofrece_id: number;
+  categoria_id: number;
+  acepta_necesita_at: string | null;
+  acepta_necesita_por: string | null;
+  acepta_ofrece_at: string | null;
+  acepta_ofrece_por: string | null;
+  rechazada_at: string | null;
+  rechazada_por: string | null;
+  rechazada_empresa_id: number | null;
+  match_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type MensajeRow = {
+  id: number;
+  conexion_id: number;
+  empresa_id: number;
+  autor_id: string | null;
+  contenido: string;
+  created_at: string;
+};
+
+export type BitacoraRow = {
+  id: number;
+  created_at: string;
+  user_id: string | null;
+  user_nombre: string | null;
+  user_email: string | null;
+  accion: string;
+  entidad: string | null;
+  entidad_id: string | null;
+  detalle: Record<string, unknown>;
+};
+
+export type ContactoResumenRow = {
+  conexion_id: number;
+  empresa_id: number;
+  cantidad: number;
+  primer_mensaje: string;
+  ultimo_mensaje: string;
 };
 
 export type EmpresaUsuarioRow = {
@@ -104,6 +175,38 @@ export interface Database {
         Update: Partial<RoleRow>;
         Relationships: [];
       };
+      categorias: {
+        Row: CategoriaRow;
+        Insert: Partial<CategoriaRow> & Pick<CategoriaRow, 'nombre'>;
+        Update: Partial<CategoriaRow>;
+        Relationships: [];
+      };
+      // Las tres siguientes son de solo lectura desde el navegador: se
+      // escriben únicamente a través de las funciones (Functions) de abajo.
+      empresa_items: {
+        Row: EmpresaItemRow;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      conexiones: {
+        Row: ConexionRow;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      mensajes: {
+        Row: MensajeRow;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      bitacora: {
+        Row: BitacoraRow;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
     };
     // OJO: acá tiene que ir un tipo SIN index signature (no
     // Record<string, never>). Un Record<string, never> sí tiene index
@@ -122,6 +225,30 @@ export interface Database {
         };
         Returns: CheckProfileDuplicatesResult;
       };
+      guardar_items_empresa: {
+        Args: { p_empresa: number; p_items: Array<{ tipo: ItemTipo; categoria_id: number; subcategoria: string }> };
+        Returns: EmpresaItemRow[];
+      };
+      conexion_responder: {
+        Args: { p_necesita: number; p_ofrece: number; p_categoria: number; p_accion: ConexionAccion };
+        Returns: ConexionRow;
+      };
+      enviar_mensaje: {
+        Args: { p_conexion: number; p_contenido: string };
+        Returns: MensajeRow;
+      };
+      webmaster_contacto_resumen: {
+        Args: Record<never, never>;
+        Returns: ContactoResumenRow[];
+      };
+      registrar_evento: {
+        Args: { p_accion: 'sesion_inicio' | 'sesion_cierre' };
+        Returns: undefined;
+      };
+      marcar_guia_vista: {
+        Args: Record<never, never>;
+        Returns: undefined;
+      };
     };
     Enums: Record<never, never>;
     CompositeTypes: Record<never, never>;
@@ -137,11 +264,37 @@ export interface Profile {
   email: string | null;
   tel: string | null;
   role: string;
+  // Opcionales por compatibilidad: si sql/012 todavía no se corrió, la
+  // columna no existe y se tratan como false.
+  is_webmaster?: boolean;
+  guia_vista?: boolean;
   created_at?: string;
+}
+
+export type ConexionAccion = 'aceptar' | 'rechazar' | 'retirar';
+
+export interface Categoria {
+  id: number;
+  nombre: string;
+  subcategorias: string[];
+  orden: number;
+  esOtros: boolean;
+}
+
+// Una oferta o necesidad de una empresa: categoría + subcategoría.
+export interface EmpresaItem {
+  tipo: ItemTipo;
+  categoriaId: number;
+  subcategoria: string;
+  revisar: boolean;
 }
 
 // Campos propios de una empresa tal como los usa la UI (camelCase). No
 // incluye `id` ni `usuarios` porque no se mandan en un insert/update.
+// Las ofertas y necesidades sin cubrir ya no son texto libre sino ítems
+// con categoría + subcategoría (Empresa.items, tabla empresa_items); las
+// columnas viejas empresas.ofertas / needs_uncovered quedan solo como
+// respaldo en la base y la app no las lee ni las escribe.
 export interface EmpresaFields {
   cuit: string;
   tipo: string;
@@ -158,9 +311,7 @@ export interface EmpresaFields {
   web: string;
   desc: string;
   logo: string | null;
-  ofertas: string[];
   instalaciones: string[];
-  needsUncovered: string[];
   needsCovered: string[];
 }
 
@@ -175,27 +326,37 @@ export interface Empresa extends EmpresaFields {
   // asociados), calculado en main.ts (usuariosDeEmpresa). Ausente hasta que
   // se calcula la primera vez.
   usuarios?: string[];
+  // Ofertas y necesidades (empresa_items). Se completa en main.ts al cargar.
+  items: EmpresaItem[];
 }
 
-export type MatchStrength = 'strong' | 'weak';
+// ─── Conexiones (ver matching.ts) ──────────────────────────────────
+// 'exacta': misma categoría y misma subcategoría. 'categoria': misma
+// categoría, distinta subcategoría.
+export type NivelCoincidencia = 'exacta' | 'categoria';
 
-export interface MatchResult {
-  seeker: Empresa;
-  need: string;
-  provider: Empresa;
-  offer: string;
-  strength: MatchStrength;
+export interface ParCoincidencia {
+  necesidad: string; // subcategoría pedida ('' = sin especificar)
+  oferta: string;    // subcategoría ofrecida
+  nivel: NivelCoincidencia;
 }
 
-export interface MatchForOrg {
-  org: Empresa;
-  need: string;
-  offer: string;
-  strength: MatchStrength;
+// Una conexión sugerida, calculada a partir de los ítems actuales:
+// "necesita" necesita [categoria] ← "ofrece" la ofrece.
+export interface Sugerencia {
+  key: string;
+  necesita: Empresa;
+  ofrece: Empresa;
+  categoria: Categoria;
+  pares: ParCoincidencia[];
+  nivel: NivelCoincidencia; // 'exacta' si al menos un par es exacto
 }
 
-export interface MatchGroup {
-  seeker: Empresa;
-  provider: Empresa;
-  items: Array<{ need: string; offer: string; strength: MatchStrength }>;
-}
+export type EstadoConexion =
+  | 'sugerida'        // nadie aceptó
+  | 'esperando_otra'  // mi empresa aceptó, falta la otra
+  | 'otra_acepto'     // la otra empresa aceptó, falta la mía
+  | 'match'           // ambas aceptaron
+  | 'rechazada';
+
+export type LadoConexion = 'necesita' | 'ofrece';

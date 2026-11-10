@@ -28,15 +28,22 @@ CUPFI/
 │       ├── types.ts           # Tipos de la base (Database) + tipos de dominio de la app
 │       ├── supabaseClient.ts  # Cliente de Supabase (URL + publishable key)
 │       ├── auth.ts            # Registro / login / logout / perfil / recuperar contraseña
-│       ├── empresas.ts        # CRUD de empresas + subida de logos
-│       ├── matching.ts        # Motor de "vinculación" (necesidades ↔ ofertas)
-│       ├── utils.ts           # Helpers (escape HTML, validaciones, etc.)
+│       ├── empresas.ts        # CRUD de empresas, ofertas/necesidades (ítems), categorías y logos
+│       ├── matching.ts        # Motor de conexiones (necesidades ↔ ofertas por categoría) y sus estados
+│       ├── conexiones.ts      # Aceptar / rechazar / retirar conexiones + chat (datos)
+│       ├── webmaster.ts       # Bitácora, resumen de contacto y permiso de webmaster (datos)
+│       ├── contexto.ts        # Estado compartido entre main.ts y los módulos ui-*.ts
+│       ├── ui-conexiones.ts   # Pantalla Vinculación, aviso de match y chat privado
+│       ├── ui-webmaster.ts    # Pestaña Webmaster (bitácora, conexiones, categorías)
+│       ├── ui-guia.ts         # Guía tipo chatbot (primer ingreso + preguntas frecuentes)
+│       ├── utils.ts           # Helpers (escape HTML, validaciones, mensajes de error)
 │       ├── main.ts            # UI: navegación, renderizado, listeners
 │       └── *.test.ts          # Tests (Vitest) de matching.ts y utils.ts
 ├── sql/
 │   ├── 001_schema.sql                     # Esquema completo y consolidado (correr en un proyecto nuevo)
 │   ├── 005_seed_demo_empresas.sql         # (Opcional) 17 empresas de ejemplo para poblar el directorio
 │   ├── 011_empresa_uid_on_delete_set_null.sql # Migración para el proyecto ya existente (ver más abajo)
+│   ├── 012_etapa1_conexiones.sql          # Categorías, conexiones, chat, webmaster, bitácora y guía
 │   └── historial/                         # Migraciones ya aplicadas al proyecto actual (solo referencia,
 │                                           # no hace falta correrlas en un proyecto nuevo: 001 ya las incluye)
 ├── supabase/functions/admin-update-user/  # Edge Function (opcional): admin edita email/contraseña
@@ -47,28 +54,67 @@ CUPFI/
 ## Cómo funciona la vinculación (lo central del programa)
 
 - Un graduado puede registrar **una o varias empresas propias** (pestaña
-  "Agregar"). Cada empresa carga, además de sus datos, sus **servicios /
-  productos** (lo que ofrece) y sus **necesidades sin cubrir** (lo que le
-  falta).
-- Al cargar servicios y necesidades, la app sugiere **categorías
-  predefinidas** (botones "+ Categoría") además de permitir texto libre.
-  Usar la misma categoría que otra empresa (por ejemplo "Mecanizado de
-  piezas") es lo que le permite al sistema encontrar una **coincidencia
-  exacta**, mucho más confiable que una coincidencia aproximada por
-  palabras sueltas.
-- La pestaña "Vinculación" agrupa, por cada par de empresas, todas las
-  coincidencias entre lo que una necesita y lo que la otra ofrece, marcando
-  cada una como "Coincidencia exacta" o "Posible coincidencia". Desde ahí
-  (y desde el detalle de cada empresa) hay un botón para **contactar
-  directamente** por email o teléfono a la otra empresa.
-- El motor de vinculación (`assets/js/matching.ts`) nunca cruza dos
-  empresas del mismo graduado entre sí.
+  "Agregar"). Cada empresa carga sus **servicios / productos** (lo que
+  ofrece) y sus **necesidades sin cubrir**. Cada uno es un ítem con
+  **categoría** y **subcategoría** (por ejemplo *Soldadura › TIG*). La
+  subcategoría se elige de una lista sugerida o se escribe libremente; si
+  ninguna categoría encaja se usa **Otros** describiendo qué es.
+- Las categorías y sus subcategorías sugeridas viven en la base (tabla
+  `categorias`) y las administran los **webmasters** desde su pestaña.
+- **Conexión** = *A necesita [categoría] ← B la ofrece*. Se ramifica por
+  subcategoría: misma subcategoría = **Coincidencia exacta**; misma
+  categoría con distinta subcategoría = **Misma categoría**. En *Otros* solo
+  hay conexión si el detalle es idéntico. Si B también necesita algo que A
+  ofrece, es otra conexión aparte.
+- **Doble aceptación:** cada empresa ve sus conexiones en "Vinculación →
+  Mis conexiones" agrupadas por estado: *Sugerida*, *Esperando a la otra
+  empresa* (yo acepté), *La otra empresa ya aceptó* (falta la mía),
+  *Match* y *Rechazada*. Cualquier usuario de la empresa puede aceptar en su
+  nombre. Antes del match se puede **retirar** la aceptación o
+  **rechazar** (el rechazo no se puede deshacer y deja de sugerirse a ambas).
+- Al llegar a un **match** se recomiendan las demás coincidencias abiertas
+  entre esas dos empresas (en ambas direcciones) y se habilita el **chat
+  privado**: uno por par de empresas, con una pestaña por cada conexión en
+  match.
+- "Vinculación → Toda la red" muestra, solo para consulta, todas las
+  coincidencias detectadas entre todas las empresas.
+- Nunca se conectan entre sí empresas que comparten algún usuario
+  (administrador principal o asociado), igual que antes.
 - Una empresa puede tener, además de su administrador principal, **otros
   usuarios asociados** (por ejemplo varios socios con cuentas
   separadas): un admin los agrega o quita desde "Gestión de empresas"
   → ícono de personas. Cualquiera de esos usuarios puede editar la
-  empresa, y el motor de vinculación tampoco cruza entre sí empresas
-  que comparten algún usuario asociado.
+  empresa y responder sus conexiones.
+
+## Webmaster, bitácora y guía
+
+- **Webmaster** es un permiso que solo puede tener un admin. El primero se
+  asigna una vez desde el SQL Editor (ver "Configuración inicial"); después
+  solo un webmaster lo da o lo quita a otros admins, desde el panel Admin →
+  Usuarios. Si a alguien le quitan el rol admin, pierde también el permiso.
+- La pestaña **Webmaster** tiene:
+  - **Bitácora**: todos los movimientos (inicio/cierre de sesión, registros,
+    perfiles, roles y permisos, altas/ediciones/bajas de empresas y de sus
+    ofertas/necesidades, asociaciones, categorías, aceptar/rechazar/retirar
+    conexiones, match y "mensaje enviado"). Con filtros por usuario, acción y
+    fechas. Nadie puede editarla ni borrarla desde la app.
+  - **Conexiones**: todas, con su estado, quién aceptó y cuándo, y si hubo
+    contacto (cantidad de mensajes por empresa, primer y último mensaje).
+  - **Categorías**: alta, edición (renombrar actualiza todas las empresas) y
+    baja (no se puede borrar una categoría en uso, ni "Otros").
+- **Privacidad del chat:** el texto de los mensajes solo lo pueden leer los
+  usuarios de las dos empresas de la conexión. Ni admins ni webmasters
+  (lo hace cumplir la base con RLS, no la pantalla); la bitácora registra que
+  se envió un mensaje, nunca su contenido. Dos salvedades a tener en cuenta:
+  quien tenga acceso al dashboard de Supabase puede ver todas las tablas, y
+  un admin que se agregue a sí mismo como usuario asociado de una empresa
+  pasa a leer sus chats (queda registrado en la bitácora como
+  "Usuario asociado a empresa").
+- **Guía:** en el primer ingreso de cada usuario se abre un recorrido paso a
+  paso (queda guardado en su cuenta, no reaparece en otros dispositivos).
+  Después está siempre disponible en el botón **Guía** (abajo a la derecha)
+  con preguntas frecuentes y la opción de repetir el recorrido. Las
+  respuestas están en `assets/js/ui-guia.ts`; no usa IA ni servicios externos.
 
 ## Cómo funciona la seguridad
 
@@ -131,11 +177,13 @@ CUPFI/
 
 ## Configuración inicial en Supabase (una sola vez)
 
-`sql/001_schema.sql` es el esquema **completo y consolidado**: define
-`profiles`, `empresas`, `empresa_usuarios`, `roles`, todas las políticas RLS,
-triggers, el bucket de Storage `logos` y las funciones de validación. Es
-idempotente (usa `if not exists` / `or replace` / `drop ... if exists` en
-todos lados), así que es seguro correrlo más de una vez.
+`sql/001_schema.sql` define `profiles`, `empresas`, `empresa_usuarios`,
+`roles`, sus políticas RLS, triggers, el bucket de Storage `logos` y las
+funciones de validación. `sql/012_etapa1_conexiones.sql` agrega encima
+categorías, ofertas/necesidades con categoría (`empresa_items`), conexiones,
+mensajes, bitácora y el permiso de webmaster. Ambos son idempotentes (usan
+`if not exists` / `or replace` / `drop ... if exists`), así que es seguro
+correrlos más de una vez.
 
 1. Entrá al [dashboard de Supabase](https://supabase.com/dashboard) → tu
    proyecto → **SQL Editor**.
@@ -145,17 +193,32 @@ todos lados), así que es seguro correrlo más de una vez.
    [`sql/005_seed_demo_empresas.sql`](sql/005_seed_demo_empresas.sql) si
    querés que el directorio no arranque vacío: carga 17 organizaciones de
    ejemplo sin asociarlas a ningún usuario real.
-4. Registrate normalmente desde la app (pestaña "Registrarse"). La
+4. Pegá y ejecutá
+   [`sql/012_etapa1_conexiones.sql`](sql/012_etapa1_conexiones.sql) (después
+   del paso 3, así convierte también las empresas de ejemplo al formato con
+   categorías; si cargás el ejemplo después, volvé a correr 012).
+5. Registrate normalmente desde la app (pestaña "Registrarse"). La
    **primera** cuenta de un proyecto nuevo no es admin automáticamente: hay
    que asignarle el rol manualmente (paso siguiente). A partir de ahí, ese
    primer admin puede promover a cualquier otro usuario desde la propia app,
    sin volver a tocar la base de datos.
-5. Para convertirte en administrador la primera vez, en el **Table Editor**
+6. Para convertirte en administrador la primera vez, en el **Table Editor**
    de Supabase abrí la tabla `profiles` y cambiá tu fila: `role = admin`. O
    corré en el SQL Editor:
    ```sql
    update public.profiles set role = 'admin' where email = 'tu-email@ejemplo.com';
    ```
+7. Para darte el permiso de **webmaster** la primera vez (tenés que ser
+   admin), en el SQL Editor:
+   ```sql
+   update public.profiles set is_webmaster = true where email = 'tu-email@ejemplo.com';
+   ```
+   A partir de ahí, los demás webmasters se asignan desde la app.
+
+> Nota: en un proyecto **nuevo**, `sql/001_schema.sql` falla en la primera
+> pasada porque crea una política de `empresas` que usa la tabla
+> `empresa_usuarios` antes de crearla. Correrlo una segunda vez lo completa
+> sin errores. No afecta al proyecto actual, que ya tiene todo creado.
 
 ### Migración pendiente en el proyecto ya existente
 
@@ -177,6 +240,22 @@ todas ellas combinadas. Si en algún momento hay dudas de si la base en vivo
 quedó desalineada con `001_schema.sql`, correrlo de nuevo en el SQL Editor
 es seguro (no destruye datos) y sirve como chequeo: si no tira errores, el
 esquema está al día.
+
+### Actualización a la etapa 1 (conexiones, chat, webmaster, guía) en el proyecto existente
+
+1. En el SQL Editor de Supabase, pegá y ejecutá el contenido completo de
+   [`sql/012_etapa1_conexiones.sql`](sql/012_etapa1_conexiones.sql). No
+   borra datos: crea las tablas nuevas, carga las 28 categorías + "Otros" y
+   convierte las ofertas y necesidades actuales (lo que coincide con el
+   nombre de una categoría se asigna solo; el resto pasa a *Otros* y la
+   empresa ve un aviso para recategorizarlo). Las columnas viejas
+   `empresas.ofertas` y `empresas.needs_uncovered` quedan intactas como
+   respaldo.
+2. Asignate el permiso de webmaster (paso 7 de "Configuración inicial").
+3. Inmediatamente después, publicá esta versión del sitio (merge a `main`).
+   El sitio anterior sigue funcionando con la base ya actualizada mientras
+   se publica; si alguien creó una empresa justo en ese intervalo, volver a
+   correr `012` la convierte (es seguro repetirlo).
 
 ### Confirmación de email
 

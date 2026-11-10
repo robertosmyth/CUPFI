@@ -6,9 +6,15 @@ import '@tabler/icons-webfont/dist/tabler-icons.min.css';
 import type * as LeafletTypes from 'leaflet';
 import * as Auth from './auth.ts';
 import * as Empresas from './empresas.ts';
-import { allMatches, findMatchesFor, countMatches, groupMatchesByPair } from './matching.ts';
+import * as Conexiones from './conexiones.ts';
+import * as Webmaster from './webmaster.ts';
+import { calcularSugerencias, etiquetaItem } from './matching.ts';
+import { setContext } from './contexto.ts';
+import { initConexionesUI, resetConexionesUI } from './ui-conexiones.ts';
+import { resetWebmasterUI } from './ui-webmaster.ts';
+import { iniciarGuia, resetGuia } from './ui-guia.ts';
 import { esc, ini, normCuit, isValidCuit, isValidEmail, isValidUrl, buildAddress, friendlyError, normalizeTagKey } from './utils.ts';
-import type { Empresa, EmpresaUsuarioRow, Profile } from './types.ts';
+import type { Categoria, ConexionRow, Empresa, EmpresaItem, EmpresaUsuarioRow, ItemTipo, Profile } from './types.ts';
 
 // Handlers expuestos a los `onclick`/`onchange`/`onkeydown` inline del HTML
 // (ver index.html). Se mantiene ese patrón tal cual estaba en JS: es un
@@ -46,8 +52,11 @@ declare global {
     guardarOrg(): Promise<void>;
     openEditUbicacion(id: number): void;
     guardarUbicacion(): Promise<void>;
-    setVinFilter(el: HTMLElement, val: string): void;
-    renderVin(): void;
+    itemCategoriaCambio(tipo: ItemTipo): void;
+    itemAgregar(tipo: ItemTipo): void;
+    itemSugerida(tipo: ItemTipo, idx: number): void;
+    itemQuitar(idx: number): void;
+    toggleWebmaster(userId: string, valor: boolean): Promise<void>;
     addTag(event: KeyboardEvent, type: TagType): void;
     quickAddTag(type: TagType, idx: number): void;
     removeTag(type: TagType, idx: number): void;
@@ -77,15 +86,19 @@ const $button = (id: string) => $<HTMLButtonElement>(id);
 // ══════════════════════════════════════════════
 // ESTADO GLOBAL (en memoria; los datos reales viven en Supabase)
 // ══════════════════════════════════════════════
-type TagType = 'ofertas' | 'instalaciones' | 'needs-uncovered' | 'needs-covered';
+// Ofertas y necesidades sin cubrir ya no son tags de texto libre sino
+// ítems con categoría + subcategoría (formItems, más abajo).
+type TagType = 'instalaciones' | 'needs-covered';
 
-const tags: Record<TagType, string[]> = { ofertas: [], instalaciones: [], 'needs-uncovered': [], 'needs-covered': [] };
-const tagCls: Record<TagType, string> = { ofertas: 'rt-o', instalaciones: 'rt-i', 'needs-uncovered': 'rt-nu', 'needs-covered': 'rt-nc' };
+const tags: Record<TagType, string[]> = { instalaciones: [], 'needs-covered': [] };
+const tagCls: Record<TagType, string> = { instalaciones: 'rt-i', 'needs-covered': 'rt-nc' };
 let activeFilter = 'todos';
-let activeVinFilter: 'todos' | 'strong' | 'weak' = 'todos';
 let currentProfile: Profile | null = null;
 let orgs: Empresa[] = [];
 let profiles: Profile[] = [];
+let categorias: Categoria[] = [];
+let conexiones: ConexionRow[] = []; // las visibles para el usuario (RLS)
+let formItems: EmpresaItem[] = [];  // ofertas/necesidades del formulario de empresa
 let asociaciones: EmpresaUsuarioRow[] = []; // filas de empresa_usuarios (ver sql/historial/009)
 let editingId: number | null = null;
 let editReturnScreen: string | null = null; // pantalla a la que volver después de editar (no de agregar)
@@ -97,10 +110,9 @@ let leafletMap: LeafletTypes.Map | null = null;
 let mapMarkers: LeafletTypes.Marker[] = [];
 let leafletModule: typeof LeafletTypes | null = null;
 
-// Categorías sugeridas para servicios/productos y necesidades: compartir
-// el mismo vocabulario entre "ofertas" y "necesidades" es lo que permite
-// que el motor de vinculación (matching.ts) encuentre coincidencias
-// exactas y confiables, además de las aproximadas por palabras.
+// Sugerencias para "Necesidades cubiertas con proveedores" (texto libre,
+// no participa del matching). Las categorías de ofertas y necesidades sin
+// cubrir ahora viven en la tabla categorias (las administra un webmaster).
 const CATEGORIAS_SERVICIOS = [
   'Mecanizado de piezas', 'Diseño eléctrico', 'Diseño mecánico', 'Ensayos de materiales',
   'Mantenimiento industrial', 'Logística y transporte', 'Consultoría técnica',
@@ -124,11 +136,24 @@ const SECTORES = [
   'Salud', 'Educación', 'Ferroviario', 'Naval / Portuario', 'Institucional',
 ];
 const QUICK_TAG_SOURCES: Record<TagType, string[]> = {
-  ofertas: CATEGORIAS_SERVICIOS,
   instalaciones: CATEGORIAS_INSTALACIONES,
-  'needs-uncovered': CATEGORIAS_SERVICIOS,
   'needs-covered': CATEGORIAS_SERVICIOS,
 };
+
+// Contexto que leen los módulos de interfaz nuevos (ui-*.ts).
+setContext({
+  get orgs() { return orgs; },
+  get profiles() { return profiles; },
+  get categorias() { return categorias; },
+  get conexiones() { return conexiones; },
+  get currentProfile() { return currentProfile; },
+  misEmpresas: () => new Set(currentProfile ? orgs.filter(o => esUsuarioDeEmpresa(o, currentProfile!.id)).map(o => o.id) : []),
+  refresh: () => refreshData(),
+  getProfileById: uid => getProfileById(uid),
+  categoriaById: id => categorias.find(c => c.id === id),
+  contactButtonsHtml: org => contactButtonsHtml(org),
+  showScreen: name => window.showScreen(name),
+});
 
 // ══════════════════════════════════════════════
 // ARRANQUE
@@ -215,6 +240,7 @@ function wireStaticEvents(): void {
   $('modal-perfil').addEventListener('click', function (e) {
     if (e.target === this) window.closeModal('modal-perfil');
   });
+  initConexionesUI();
   renderQuickTagButtons();
   renderSectorDatalist();
 }
@@ -225,9 +251,7 @@ function renderQuickTagButtons(): void {
     if (!el) return;
     el.innerHTML = list.map((c, i) => `<button type="button" class="quick-tag-btn" onclick="quickAddTag('${type}',${i})">+ ${esc(c)}</button>`).join('');
   };
-  mk('quick-ofertas', CATEGORIAS_SERVICIOS, 'ofertas');
   mk('quick-instalaciones', CATEGORIAS_INSTALACIONES, 'instalaciones');
-  mk('quick-needs-uncovered', CATEGORIAS_SERVICIOS, 'needs-uncovered');
   mk('quick-needs-covered', CATEGORIAS_SERVICIOS, 'needs-covered');
 }
 
@@ -253,6 +277,7 @@ window.doLogin = async function () {
   setBusy('l-btn', true);
   try {
     await Auth.signIn({ email, password: pass });
+    await Auth.registrarEvento('sesion_inicio');
     await enterApp();
   } catch (e) {
     showAuthMsg('l-msg', friendlyError(e), 'err');
@@ -288,6 +313,7 @@ window.doRegister = async function () {
 
     const data = await Auth.signUp({ nombre, apellido, email, tel, password: pass });
     if (data.session) {
+      await Auth.registrarEvento('sesion_inicio');
       await enterApp();
     } else {
       showAuthMsg('r-msg', '✓ Cuenta creada. Revisá tu email para confirmar la cuenta antes de iniciar sesión.', 'ok');
@@ -302,6 +328,7 @@ window.doRegister = async function () {
 
 window.doLogout = async function () {
   if (leafletMap) { leafletMap.remove(); leafletMap = null; mapMarkers = []; }
+  await Auth.registrarEvento('sesion_cierre');
   await Auth.signOut();
   currentProfile = null;
   showAuthScreen();
@@ -359,9 +386,26 @@ function showAuthScreen(): void {
   $('auth-wrap').style.display = 'flex';
   $('main-app').style.display = 'none';
   $input('l-pass').value = '';
+  // Que no quede nada del usuario anterior (chat abierto, bitácora, guía).
+  resetConexionesUI();
+  resetWebmasterUI();
+  resetGuia();
+  conexiones = [];
 }
 
-async function enterApp(): Promise<void> {
+// Al iniciar sesión, enterApp() se dispara dos veces casi juntas: desde
+// doLogin y desde el evento SIGNED_IN de onAuthStateChange. Sin esta
+// guarda, la segunda terminaba después y volvía a mostrar "Empresas" aunque
+// el usuario ya hubiera cambiado de pestaña (y abría la guía dos veces).
+let enteringApp: Promise<void> | null = null;
+function enterApp(): Promise<void> {
+  if (enteringApp) return enteringApp;
+  if (currentProfile && $('main-app').style.display === 'block') return Promise.resolve(); // ya adentro
+  enteringApp = enterAppImpl().finally(() => { enteringApp = null; });
+  return enteringApp;
+}
+
+async function enterAppImpl(): Promise<void> {
   try {
     currentProfile = await Auth.getCurrentProfile();
   } catch (e) {
@@ -375,17 +419,44 @@ async function enterApp(): Promise<void> {
   const isAdmin = currentProfile.role === 'admin';
   $('admin-tab-btn').classList.toggle('hidden', !isAdmin);
   $('admin-badge').classList.toggle('hidden', !isAdmin);
+  $('webmaster-tab-btn').classList.toggle('hidden', !(isAdmin && currentProfile.is_webmaster));
 
-  await refreshData();
+  try {
+    await refreshData();
+  } catch (e) {
+    // Sin datos la app no sirve: volvemos al login con el motivo.
+    currentProfile = null;
+    showAuthScreen();
+    showAuthMsg('l-msg', friendlyError(e), 'err');
+    return;
+  }
   window.showScreen('directorio');
+  iniciarGuia();
 }
 
 async function refreshData(): Promise<void> {
-  const [e, p, a] = await Promise.all([Empresas.listEmpresas(), Auth.listProfiles(), Empresas.listAsociaciones()]);
+  const [e, p, a, items, cats, cons] = await Promise.all([
+    Empresas.listEmpresas(), Auth.listProfiles(), Empresas.listAsociaciones(),
+    Empresas.listItems(), Empresas.listCategorias(), Conexiones.listConexiones(),
+  ]);
   orgs = e;
   profiles = p;
   asociaciones = a;
-  orgs.forEach(o => { o.usuarios = usuariosDeEmpresa(o); });
+  categorias = cats;
+  conexiones = cons;
+  orgs.forEach(o => {
+    o.usuarios = usuariosDeEmpresa(o);
+    o.items = items.get(o.id) || [];
+  });
+}
+
+// "Categoría › Subcategoría" de un ítem (o "?" si su categoría ya no existe).
+function itemLabel(it: EmpresaItem): string {
+  const c = categorias.find(x => x.id === it.categoriaId);
+  return etiquetaItem(c ? c.nombre : '?', it.subcategoria);
+}
+function itemsDe(o: Empresa, tipo: ItemTipo): EmpresaItem[] {
+  return (o.items || []).filter(i => i.tipo === tipo);
 }
 
 // Todos los usuarios con acceso a una empresa: el administrador principal
@@ -451,7 +522,7 @@ window.showScreen = function (name) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   const el = document.getElementById('screen-' + name);
   if (el) el.classList.add('active');
-  const names = ['directorio', 'graduados', 'vinculacion', 'mapa', 'mis-empresas', 'registrar', 'admin'];
+  const names = ['directorio', 'graduados', 'vinculacion', 'mapa', 'mis-empresas', 'registrar', 'admin', 'webmaster'];
   const idx = names.indexOf(name);
   if (idx >= 0) { const btns = document.querySelectorAll('.tab-btn'); if (btns[idx]) btns[idx].classList.add('active'); }
   if (name === 'directorio') window.renderDir();
@@ -459,12 +530,13 @@ window.showScreen = function (name) {
   if (name === 'vinculacion') window.renderVin();
   if (name === 'mapa') window.renderMapa().catch(e => console.error('No se pudo cargar el mapa:', e));
   if (name === 'mis-empresas') window.renderMias();
-  if (name === 'registrar') { if (!editingId) prefillUser(); }
+  if (name === 'registrar') { if (!editingId) prefillUser(); renderItemEditors(); }
   if (name === 'admin') window.renderAdmin();
+  if (name === 'webmaster') window.renderWebmaster();
 };
 
 window.setFilter = function (el, val) {
-  document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+  document.querySelectorAll('#screen-directorio .chip').forEach(c => c.classList.remove('active'));
   el.classList.add('active'); activeFilter = val; window.renderDir();
 };
 
@@ -488,16 +560,16 @@ window.renderDir = function () {
     if (activeFilter === 'Oil & Gas' && !(o.sector || '').includes('Oil')) return false;
     if (activeFilter === 'Industrial' && !INDUSTRIAL_KEYWORDS.some(k => (o.sector || '').includes(k))) return false;
     if (activeFilter === 'Consultoría' && !['Consul', 'Radicac', 'profesional'].some(k => (o.sector || '').includes(k))) return false;
-    if (activeFilter === 'has-need' && !(o.needsUncovered && o.needsUncovered.length)) return false;
+    if (activeFilter === 'has-need' && !itemsDe(o, 'necesidad').length) return false;
     if (!q) return true;
-    const hay = [o.nombre, o.sector, o.cuit, o.desc, o.referente, o.ciudad, o.provincia, ...(o.ofertas || []), ...(o.needsUncovered || [])].join(' ').toLowerCase();
+    const hay = [o.nombre, o.sector, o.cuit, o.desc, o.referente, o.ciudad, o.provincia, ...(o.items || []).map(itemLabel)].join(' ').toLowerCase();
     return hay.includes(q);
   });
 
   $('stat-total').textContent = String(orgs.length);
   $('stat-users').textContent = String(profiles.filter(u => u.role !== 'admin').length);
   $('stat-sectores').textContent = String(new Set(orgs.map(o => o.sector).filter(Boolean)).size);
-  $('stat-matches').textContent = String(countMatches(orgs));
+  $('stat-matches').textContent = String(calcularSugerencias(orgs, categorias).length);
   $('dir-count').textContent = String(filtered.length);
 
   const grid = $('org-grid');
@@ -521,8 +593,8 @@ function renderOrgCard(o: Empresa): string {
     <div class="card-meta"><i class="ti ti-id"></i>CUIT: ${esc(o.cuit)}</div>
     ${loc ? `<div class="card-meta"><i class="ti ti-map-pin"></i>${esc(loc)}</div>` : ''}
     <div class="tags">
-      ${(o.ofertas || []).slice(0, 2).map(t => `<span class="tag tag-offer">${esc(t)}</span>`).join('')}
-      ${(o.needsUncovered || []).slice(0, 1).map(t => `<span class="tag tag-need">${esc(t)}</span>`).join('')}
+      ${itemsDe(o, 'oferta').slice(0, 2).map(t => `<span class="tag tag-offer">${esc(itemLabel(t))}</span>`).join('')}
+      ${itemsDe(o, 'necesidad').slice(0, 1).map(t => `<span class="tag tag-need">${esc(itemLabel(t))}</span>`).join('')}
     </div>
   </div>`;
 }
@@ -718,6 +790,14 @@ window.renderMias = function () {
   if (!currentProfile) return;
   const mine = orgs.filter(o => esUsuarioDeEmpresa(o, currentProfile!.id));
   $('mis-count').textContent = String(mine.length);
+  // Ítems pasados automáticamente a "Otros" desde el formato anterior.
+  const aRevisar = mine.filter(o => (o.items || []).some(i => i.revisar));
+  $('mis-revisar').classList.toggle('hidden', !aRevisar.length);
+  $('mis-revisar').innerHTML = aRevisar.length
+    ? `<i class="ti ti-alert-triangle"></i> Actualizamos el formato de ofertas y necesidades: ahora llevan <strong>categoría y subcategoría</strong>.
+       Algunos ítems de ${aRevisar.map(o => `<a href="#" onclick="event.preventDefault();startEdit(${o.id})">${esc(o.nombre)}</a>`).join(', ')}
+       quedaron en <em>Otros</em>. Editá la empresa y asignales la categoría correcta para encontrar más conexiones.`
+    : '';
   const grid = $('mis-grid');
   if (!mine.length) {
     grid.innerHTML = `<div class="empty empty--full">
@@ -736,7 +816,7 @@ window.renderMias = function () {
 window.openDetail = function (id) {
   const o = orgs.find(x => x.id === id);
   if (!o) return;
-  const mx = findMatchesFor(orgs, o);
+  const mx = calcularSugerencias(orgs, categorias).filter(s => s.necesita.id === o.id);
   const mine = currentProfile && (esUsuarioDeEmpresa(o, currentProfile.id) || currentProfile.role === 'admin');
   const addr = buildAddress(o);
   const u = getProfileById(o.uid);
@@ -772,18 +852,18 @@ window.openDetail = function (id) {
       </a>
     </div>` : ''}
 
-    ${(o.ofertas || []).length ? `<div class="dsec"><div class="dsec-title">Servicios y productos</div><div class="tags">${o.ofertas.map(t => `<span class="tag tag-offer">${esc(t)}</span>`).join('')}</div></div>` : ''}
+    ${itemsDe(o, 'oferta').length ? `<div class="dsec"><div class="dsec-title">Servicios y productos</div><div class="tags">${itemsDe(o, 'oferta').map(t => `<span class="tag tag-offer">${esc(itemLabel(t))}</span>`).join('')}</div></div>` : ''}
     ${(o.instalaciones || []).length ? `<div class="dsec"><div class="dsec-title">Instalaciones disponibles</div><div class="tags">${o.instalaciones.map(t => `<span class="tag tag-inst">${esc(t)}</span>`).join('')}</div></div>` : ''}
-    ${(o.needsUncovered || []).length ? `<div class="dsec"><div class="dsec-title">Necesidades sin cubrir</div><div class="tags">${o.needsUncovered.map(t => `<span class="tag tag-need">${esc(t)}</span>`).join('')}</div></div>` : ''}
+    ${itemsDe(o, 'necesidad').length ? `<div class="dsec"><div class="dsec-title">Necesidades sin cubrir</div><div class="tags">${itemsDe(o, 'necesidad').map(t => `<span class="tag tag-need">${esc(itemLabel(t))}</span>`).join('')}</div></div>` : ''}
     ${(o.needsCovered || []).length ? `<div class="dsec"><div class="dsec-title">Necesidades cubiertas con proveedores</div><div class="tags">${o.needsCovered.map(t => `<span class="tag tag-cov">${esc(t)}</span>`).join('')}</div></div>` : ''}
 
     ${mx.length ? `<div class="dsec"><div class="dsec-title">Vinculaciones posibles</div>
       ${mx.map(m => `<div class="match-card">
-        <div class="match-label"><i class="ti ti-arrows-exchange"></i>puede cubrir su necesidad ${m.strength === 'strong' ? '<span class="match-strength match-strength--strong">Coincidencia exacta</span>' : '<span class="match-strength match-strength--weak">Posible coincidencia</span>'}</div>
-        <div class="match-name" onclick="closeModal('modal-detalle');setTimeout(()=>openDetail(${m.org.id}),80)">${esc(m.org.nombre)}</div>
-        <div class="muted-sm">${esc(m.org.referente)}</div>
-        <div class="match-detail">${esc(m.need)} → <span class="match-highlight">${esc(m.offer)}</span></div>
-        <div class="match-contact">${contactButtonsHtml(m.org)}</div>
+        <div class="match-label"><i class="ti ti-arrows-exchange"></i>puede cubrir su necesidad de <strong>${esc(m.categoria.nombre)}</strong> ${m.nivel === 'exacta' ? '<span class="match-strength match-strength--strong">Coincidencia exacta</span>' : '<span class="match-strength match-strength--weak">Misma categoría</span>'}</div>
+        <div class="match-name" onclick="closeModal('modal-detalle');setTimeout(()=>openDetail(${m.ofrece.id}),80)">${esc(m.ofrece.nombre)}</div>
+        <div class="muted-sm">${esc(m.ofrece.referente)}</div>
+        ${m.pares.map(par => `<div class="match-detail">${esc(par.necesidad || 'Sin subcategoría')} ↔ <span class="match-highlight">${esc(par.oferta || 'Sin subcategoría')}</span></div>`).join('')}
+        <div class="match-contact">${contactButtonsHtml(m.ofrece)}</div>
       </div>`).join('')}
     </div>` : ''}
 
@@ -968,11 +1048,11 @@ window.startEdit = function (id) {
   $input('f-logo').value = '';
 
   (Object.keys(tags) as TagType[]).forEach(k => { tags[k] = []; });
-  tags.ofertas = [...(o.ofertas || [])];
   tags.instalaciones = [...(o.instalaciones || [])];
-  tags['needs-uncovered'] = [...(o.needsUncovered || [])];
   tags['needs-covered'] = [...(o.needsCovered || [])];
   (Object.keys(tags) as TagType[]).forEach(k => renderTags(k));
+  formItems = (o.items || []).map(i => ({ ...i }));
+  renderItemEditors();
 
   $('cuit-check').textContent = '';
   $('form-msg').style.display = 'none';
@@ -1006,6 +1086,8 @@ function resetForm(): void {
   currentLogoFile = null;
   currentLogoUrl = null;
   (Object.keys(tags) as TagType[]).forEach(k => { tags[k] = []; renderTags(k); });
+  formItems = [];
+  renderItemEditors();
   $('form-msg').style.display = 'none';
 }
 
@@ -1055,17 +1137,25 @@ window.guardarOrg = async function () {
       web: webRaw,
       desc: $textarea('f-desc').value.trim(),
       logo: logoUrl || null,
-      ofertas: [...tags.ofertas],
       instalaciones: [...tags.instalaciones],
-      needsUncovered: [...tags['needs-uncovered']],
       needsCovered: [...tags['needs-covered']],
     };
 
     if (editId) {
       await Empresas.updateEmpresa(editId, data);
+      await Empresas.guardarItems(Number(editId), formItems);
       showFormMsg('✓ Empresa actualizada y guardada correctamente.', 'ok');
     } else {
-      await Empresas.createEmpresa(currentProfile.id, data);
+      const nueva = await Empresas.createEmpresa(currentProfile.id, data);
+      try {
+        await Empresas.guardarItems(nueva.id, formItems);
+      } catch (e) {
+        // La empresa ya quedó creada: no la duplicamos al reintentar.
+        await refreshData();
+        showFormMsg(`La empresa se registró, pero no se pudieron guardar sus ofertas/necesidades (${friendlyError(e)}). Editala desde "Mis empresas" para cargarlas de nuevo.`, 'err');
+        setTimeout(() => resetForm(), 4000);
+        return;
+      }
       showFormMsg('✓ Empresa registrada y guardada correctamente. Podés verla en "Mis empresas".', 'ok');
     }
 
@@ -1143,71 +1233,84 @@ window.guardarUbicacion = async function () {
 };
 
 // ══════════════════════════════════════════════
-// VINCULACIÓN
+// VINCULACIÓN: ver ui-conexiones.ts (mis conexiones, toda la red, chat)
 // ══════════════════════════════════════════════
-window.setVinFilter = function (el, val) {
-  // Escopado a #screen-vinculacion para no interferir con los chips de
-  // filtro del Directorio (que usan la misma clase .chip).
-  document.querySelectorAll('#screen-vinculacion .chip').forEach(c => c.classList.remove('active'));
-  el.classList.add('active');
-  activeVinFilter = val as 'todos' | 'strong' | 'weak';
-  window.renderVin();
+
+// ══════════════════════════════════════════════
+// OFERTAS / NECESIDADES: categoría + subcategoría (formulario de empresa)
+// ══════════════════════════════════════════════
+const ITEM_TIPOS: ItemTipo[] = ['oferta', 'necesidad'];
+
+function categoriaSeleccionada(tipo: ItemTipo): Categoria | undefined {
+  const id = Number($select(`ie-${tipo}-cat`).value);
+  return categorias.find(c => c.id === id);
+}
+
+function renderItemEditors(): void {
+  for (const tipo of ITEM_TIPOS) {
+    const sel = $select(`ie-${tipo}-cat`);
+    const prev = sel.value;
+    sel.innerHTML = categorias.length
+      ? '<option value="">Elegí una categoría…</option>' + categorias.map(c => `<option value="${c.id}">${esc(c.nombre)}</option>`).join('')
+      : '<option value="">No hay categorías cargadas</option>';
+    if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
+    renderSugeridas(tipo);
+    renderItemLista(tipo);
+  }
+}
+
+function renderSugeridas(tipo: ItemTipo): void {
+  const cat = categoriaSeleccionada(tipo);
+  const input = $input(`ie-${tipo}-sub`);
+  $(`ie-${tipo}-subs`).innerHTML = (cat?.subcategorias || []).map(s => `<option value="${esc(s)}">`).join('');
+  input.placeholder = cat?.esOtros ? 'Describí qué es (obligatorio)' : 'Subcategoría (opcional)';
+  $(`ie-${tipo}-sugeridas`).innerHTML = cat && cat.subcategorias.length
+    ? cat.subcategorias.map((s, i) => `<button type="button" class="quick-tag-btn" onclick="itemSugerida('${tipo}',${i})">+ ${esc(s)}</button>`).join('')
+    : '';
+}
+
+function renderItemLista(tipo: ItemTipo): void {
+  const lista = $(`ie-${tipo}-lista`);
+  const cls = tipo === 'oferta' ? 'rt-o' : 'rt-nu';
+  const html = formItems.map((it, idx) => it.tipo !== tipo ? '' :
+    `<span class="rtag ${cls}${it.revisar ? ' rtag-revisar' : ''}" title="${it.revisar ? 'Vino del formato anterior: revisá su categoría' : ''}">
+      ${it.revisar ? '<i class="ti ti-alert-triangle"></i> ' : ''}${esc(itemLabel(it))}
+      <span class="rtag-remove" onclick="itemQuitar(${idx})">×</span></span>`).join('');
+  lista.innerHTML = html || `<span class="muted-sm">Todavía no agregaste ${tipo === 'oferta' ? 'servicios o productos' : 'necesidades'}.</span>`;
+}
+
+function agregarItem(tipo: ItemTipo, subRaw: string): void {
+  const cat = categoriaSeleccionada(tipo);
+  if (!cat) { showFormMsg('Elegí primero una categoría.', 'err'); return; }
+  const sub = subRaw.trim().replace(/\s+/g, ' ').slice(0, 120);
+  if (cat.esOtros && !sub) { showFormMsg('En "Otros" describí qué es en el campo de subcategoría.', 'err'); return; }
+  const dup = formItems.some(i => i.tipo === tipo && i.categoriaId === cat.id && normalizeTagKey(i.subcategoria) === normalizeTagKey(sub));
+  if (!dup) formItems.push({ tipo, categoriaId: cat.id, subcategoria: sub, revisar: false });
+  $('form-msg').style.display = 'none';
+  renderItemLista(tipo);
+}
+
+window.itemCategoriaCambio = function (tipo) {
+  renderSugeridas(tipo);
 };
 
-window.renderVin = function () {
-  const totalGrouped = groupMatchesByPair(allMatches(orgs));
-  const q = ($input('search-vin').value || '').toLowerCase();
+window.itemAgregar = function (tipo) {
+  const input = $input(`ie-${tipo}-sub`);
+  agregarItem(tipo, input.value);
+  if (categoriaSeleccionada(tipo)) input.value = '';
+};
 
-  let grouped = totalGrouped;
-  if (activeVinFilter === 'strong') {
-    grouped = grouped.filter(g => g.items.some(it => it.strength === 'strong'));
-  } else if (activeVinFilter === 'weak') {
-    grouped = grouped.filter(g => g.items.every(it => it.strength !== 'strong'));
-  }
-  if (q) {
-    grouped = grouped.filter(g => {
-      const hay = [
-        g.seeker.nombre, g.seeker.referente, g.seeker.sector,
-        g.provider.nombre, g.provider.referente, g.provider.sector,
-        ...g.items.map(it => it.need), ...g.items.map(it => it.offer),
-      ].join(' ').toLowerCase();
-      return hay.includes(q);
-    });
-  }
+window.itemSugerida = function (tipo, idx) {
+  const cat = categoriaSeleccionada(tipo);
+  const sub = cat?.subcategorias[idx];
+  if (sub !== undefined) agregarItem(tipo, sub);
+};
 
-  $('vin-count').textContent = String(grouped.length);
-  const list = $('vin-list');
-  if (!grouped.length) {
-    list.innerHTML = totalGrouped.length
-      ? '<div class="empty"><i class="ti ti-arrows-exchange"></i>Sin resultados para ese criterio.</div>'
-      : '<div class="empty"><i class="ti ti-arrows-exchange"></i>No se detectaron vinculaciones aún.<br>Registrá organizaciones con servicios y necesidades para que el sistema las cruce.</div>';
-    return;
-  }
-  list.innerHTML = grouped.map(g => `
-    <div class="vin-row">
-      <div class="vc">
-        <div>
-          <div class="vc-label">necesita</div>
-          <div class="vc-name" onclick="openDetail(${g.seeker.id})">${esc(g.seeker.nombre)}</div>
-          <div class="vc-ref">${esc(g.seeker.referente)}</div>
-        </div>
-        <div class="vc-arrow"><i class="ti ti-arrow-right"></i></div>
-        <div>
-          <div class="vc-label">puede proveer</div>
-          <div class="vc-name" onclick="openDetail(${g.provider.id})">${esc(g.provider.nombre)}</div>
-          <div class="vc-ref">${esc(g.provider.referente)}</div>
-        </div>
-      </div>
-      <div class="vin-items">
-        ${g.items.map(it => `<div class="vin-item">
-          <span class="tag tag-need">${esc(it.need)}</span>
-          <i class="ti ti-arrow-right icon-sm"></i>
-          <span class="tag tag-offer">${esc(it.offer)}</span>
-          ${it.strength === 'strong' ? '<span class="match-strength match-strength--strong">Coincidencia exacta</span>' : '<span class="match-strength match-strength--weak">Posible coincidencia</span>'}
-        </div>`).join('')}
-      </div>
-      <div class="vin-contact">${contactButtonsHtml(g.provider)}</div>
-    </div>`).join('');
+window.itemQuitar = function (idx) {
+  const it = formItems[idx];
+  if (!it) return;
+  formItems.splice(idx, 1);
+  renderItemLista(it.tipo);
 };
 
 // ══════════════════════════════════════════════
@@ -1313,18 +1416,25 @@ window.renderAdmin = function () {
   $('admin-users-body').innerHTML = filteredUsers.map(u => {
     const isSelf = u.id === currentProfile!.id;
     const isAdmin = u.role === 'admin';
+    const soyWebmaster = !!currentProfile!.is_webmaster;
+    // Solo un webmaster otorga o quita el permiso, solo a otros admins
+    // (la base lo hace cumplir igual, ver sql/012).
+    const btnWebmaster = soyWebmaster && isAdmin && !isSelf
+      ? `<button class="btn-out" onclick="toggleWebmaster('${u.id}', ${!u.is_webmaster})">${u.is_webmaster ? 'Quitar webmaster' : 'Hacer webmaster'}</button>`
+      : '';
     return `
     <tr>
       <td><strong>${esc(u.nombre + ' ' + (u.apellido || ''))}</strong>${isSelf ? ' <span class="badge-self">Vos</span>' : ''}</td>
       <td class="td-sm">${esc(u.email || '—')}</td>
       <td class="td-sm">${esc(u.tel || '—')}</td>
       <td class="td-sm">${orgs.filter(o => esUsuarioDeEmpresa(o, u.id)).length}</td>
-      <td><span class="role-badge ${isAdmin ? 'role-badge--admin' : 'role-badge--user'}">${isAdmin ? 'Admin' : 'Usuario'}</span></td>
+      <td><span class="role-badge ${isAdmin ? 'role-badge--admin' : 'role-badge--user'}">${isAdmin ? 'Admin' : 'Usuario'}</span>${u.is_webmaster ? ' <span class="role-badge role-badge--webmaster">Webmaster</span>' : ''}</td>
       <td><div class="action-btns">
         <button class="btn-edit-inline" onclick="openEditarUsuario('${u.id}')" title="Editar usuario (nombre, email, contraseña...)"><i class="ti ti-pencil"></i></button>
         ${isSelf
           ? '<span class="muted-sm">No podés cambiar tu propio rol</span>'
           : `<button class="btn-out" onclick="toggleUserRole('${u.id}','${isAdmin ? 'user' : 'admin'}')">${isAdmin ? 'Quitar admin' : 'Hacer admin'}</button>`}
+        ${btnWebmaster}
       </div></td>
     </tr>`;
   }).join('');
@@ -1334,10 +1444,28 @@ window.renderAdmin = function () {
   }
 };
 
+window.toggleWebmaster = async function (userId, valor) {
+  const target = profiles.find(u => u.id === userId);
+  const name = target ? `${target.nombre} ${target.apellido}`.trim() : 'este usuario';
+  const msg = valor
+    ? `¿Darle a "${name}" el permiso de webmaster? Podrá ver la bitácora y todas las conexiones (sin el contenido de los mensajes), administrar categorías y dar o quitar este permiso.`
+    : `¿Quitarle a "${name}" el permiso de webmaster?`;
+  if (!confirm(msg)) return;
+  try {
+    await Webmaster.setWebmaster(userId, valor);
+    await refreshData();
+    window.renderAdmin();
+  } catch (e) {
+    alert(friendlyError(e));
+  }
+};
+
 window.toggleUserRole = async function (userId, newRole) {
   const target = profiles.find(u => u.id === userId);
   const name = target ? `${target.nombre} ${target.apellido}`.trim() : 'este usuario';
-  const action = newRole === 'admin' ? `¿Convertir a "${name}" en administrador?` : `¿Quitarle el rol de administrador a "${name}"?`;
+  const action = newRole === 'admin'
+    ? `¿Convertir a "${name}" en administrador?`
+    : `¿Quitarle el rol de administrador a "${name}"?${target?.is_webmaster ? ' También va a perder el permiso de webmaster.' : ''}`;
   if (!confirm(action)) return;
   try {
     await Auth.setUserRole(userId, newRole);

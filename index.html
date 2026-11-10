@@ -108,6 +108,7 @@
       <button class="tab-btn" onclick="showScreen('mis-empresas')"><i class="ti ti-star"></i> Mis empresas</button>
       <button class="tab-btn" onclick="showScreen('registrar')"><i class="ti ti-plus"></i> Agregar</button>
       <button class="tab-btn admin-tab hidden" id="admin-tab-btn" onclick="showScreen('admin')"><i class="ti ti-shield"></i> Admin</button>
+      <button class="tab-btn admin-tab hidden" id="webmaster-tab-btn" onclick="showScreen('webmaster')"><i class="ti ti-eye-check"></i> Webmaster</button>
       <div class="user-pill">
         <i class="ti ti-user icon-sm"></i>
         <span id="user-name-pill">—</span>
@@ -159,18 +160,23 @@
 
     <!-- VINCULACIÓN -->
     <div class="screen" id="screen-vinculacion">
+      <div class="filters" id="vin-vistas">
+        <button class="chip active" onclick="setVinVista(this,'mias')"><i class="ti ti-star"></i> Mis conexiones</button>
+        <button class="chip" onclick="setVinVista(this,'red')"><i class="ti ti-world"></i> Toda la red</button>
+      </div>
       <div class="section-header">
-        <div class="section-title">Oportunidades de vinculación detectadas</div>
+        <div class="section-title">Conexiones</div>
         <span class="count-pill" id="vin-count">0</span>
       </div>
-      <p class="hint-text">Organizaciones cuyas <strong>necesidades sin cubrir</strong> coinciden con <strong>servicios o productos</strong> de otra organización de la red. Las marcadas como "Coincidencia exacta" son más confiables que las de "Posible coincidencia".</p>
+      <p class="hint-text" id="vin-hint-mias">Coincidencias entre lo que <strong>necesita</strong> una empresa y lo que <strong>ofrece</strong> otra, para tus empresas. Para que haya <strong>match</strong> las dos tienen que aceptar; con el match se habilita un chat privado entre ambas.</p>
+      <p class="hint-text hidden" id="vin-hint-red">Todas las coincidencias detectadas en la red, solo para consulta. "Coincidencia exacta" = misma categoría y subcategoría; "Misma categoría" = mismo rubro con distinta subcategoría.</p>
       <div class="search-row">
-        <input type="text" id="search-vin" placeholder="Buscar por empresa, graduado, necesidad o servicio..." oninput="renderVin()">
+        <input type="text" id="search-vin" placeholder="Buscar por empresa, categoría o subcategoría..." oninput="renderVin()">
       </div>
-      <div class="filters">
+      <div class="filters" id="vin-filtros">
         <button class="chip active" onclick="setVinFilter(this,'todos')">Todos</button>
-        <button class="chip" onclick="setVinFilter(this,'strong')">Coincidencia exacta</button>
-        <button class="chip" onclick="setVinFilter(this,'weak')">Posible coincidencia</button>
+        <button class="chip" onclick="setVinFilter(this,'exacta')">Coincidencia exacta</button>
+        <button class="chip" onclick="setVinFilter(this,'categoria')">Misma categoría</button>
       </div>
       <div class="vin-list" id="vin-list"></div>
     </div>
@@ -195,6 +201,7 @@
         <div class="section-title">Mis empresas registradas</div>
         <span class="count-pill" id="mis-count">0</span>
       </div>
+      <div class="note-box note-warn hidden" id="mis-revisar"></div>
       <div class="card-grid" id="mis-grid"></div>
     </div>
 
@@ -267,9 +274,17 @@
         <div class="form-section">Descripción y servicios</div>
         <div class="form-group"><label class="form-label">Descripción general</label><textarea class="form-input form-textarea" id="f-desc" placeholder="Actividad principal, mercados, trayectoria..."></textarea></div>
         <div class="form-group">
-          <label class="form-label">Servicios / Productos <span class="label-note">(elegí una categoría o escribí la tuya y Enter)</span></label>
-          <div class="quick-tags" id="quick-ofertas"></div>
-          <div class="tag-iw" id="wrap-ofertas"><input type="text" id="input-ofertas" placeholder="Ej: Metrología industrial..." onkeydown="addTag(event,'ofertas')"></div>
+          <label class="form-label">Servicios / Productos que ofrecés <span class="label-note">(categoría + subcategoría)</span></label>
+          <div class="item-editor">
+            <div class="item-editor-row">
+              <select class="form-select" id="ie-oferta-cat" onchange="itemCategoriaCambio('oferta')" aria-label="Categoría del servicio o producto"></select>
+              <input class="form-input" id="ie-oferta-sub" type="text" list="ie-oferta-subs" maxlength="120" aria-label="Subcategoría del servicio o producto" onkeydown="if(event.key==='Enter'){event.preventDefault();itemAgregar('oferta')}">
+              <datalist id="ie-oferta-subs"></datalist>
+              <button type="button" class="btn-out" onclick="itemAgregar('oferta')"><i class="ti ti-plus"></i> Agregar</button>
+            </div>
+            <div class="quick-tags" id="ie-oferta-sugeridas"></div>
+            <div class="item-lista" id="ie-oferta-lista"></div>
+          </div>
         </div>
         <div class="form-section">Instalaciones disponibles</div>
         <div class="form-group">
@@ -279,10 +294,18 @@
         </div>
         <div class="form-section">Necesidades</div>
         <div class="form-group">
-          <label class="form-label">Necesidades sin proveedor <span class="label-note">(elegí una categoría o escribí la tuya y Enter)</span></label>
-          <p class="hint-text hint-tight">Usar las mismas categorías que otras empresas ofrecen mejora mucho la detección de vinculaciones.</p>
-          <div class="quick-tags" id="quick-needs-uncovered"></div>
-          <div class="tag-iw" id="wrap-needs-uncovered"><input type="text" id="input-needs-uncovered" placeholder="Ej: Análisis de fatiga de materiales..." onkeydown="addTag(event,'needs-uncovered')"></div>
+          <label class="form-label">Necesidades sin proveedor <span class="label-note">(categoría + subcategoría)</span></label>
+          <p class="hint-text hint-tight">El sistema te conecta con empresas que ofrecen la misma categoría. Si además coincide la subcategoría, es una coincidencia exacta.</p>
+          <div class="item-editor">
+            <div class="item-editor-row">
+              <select class="form-select" id="ie-necesidad-cat" onchange="itemCategoriaCambio('necesidad')" aria-label="Categoría de la necesidad"></select>
+              <input class="form-input" id="ie-necesidad-sub" type="text" list="ie-necesidad-subs" maxlength="120" aria-label="Subcategoría de la necesidad" onkeydown="if(event.key==='Enter'){event.preventDefault();itemAgregar('necesidad')}">
+              <datalist id="ie-necesidad-subs"></datalist>
+              <button type="button" class="btn-out" onclick="itemAgregar('necesidad')"><i class="ti ti-plus"></i> Agregar</button>
+            </div>
+            <div class="quick-tags" id="ie-necesidad-sugeridas"></div>
+            <div class="item-lista" id="ie-necesidad-lista"></div>
+          </div>
         </div>
         <div class="form-group">
           <label class="form-label">Necesidades cubiertas con proveedores <span class="label-note">(elegí una categoría o escribí la tuya y Enter)</span></label>
@@ -334,6 +357,74 @@
           <thead><tr><th>Nombre</th><th>Email</th><th>Teléfono</th><th>Empresas</th><th>Rol</th><th>Acciones</th></tr></thead>
           <tbody id="admin-users-body"></tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- WEBMASTER -->
+    <div class="screen" id="screen-webmaster">
+      <div class="admin-section-title"><i class="ti ti-eye-check"></i> Webmaster <span class="admin-badge">Webmaster</span></div>
+      <div class="filters" id="wm-secciones">
+        <button class="chip active" onclick="wmSeccion(this,'bitacora')"><i class="ti ti-list-details"></i> Bitácora</button>
+        <button class="chip" onclick="wmSeccion(this,'conexiones')"><i class="ti ti-arrows-exchange"></i> Conexiones</button>
+        <button class="chip" onclick="wmSeccion(this,'categorias')"><i class="ti ti-category"></i> Categorías</button>
+      </div>
+
+      <div id="wm-sec-bitacora">
+        <p class="hint-text">Todos los movimientos de los usuarios. No se puede editar ni borrar. De los mensajes del chat solo se registra que se enviaron, nunca su contenido.</p>
+        <div class="wm-filtros">
+          <select class="form-input" id="wm-f-usuario" aria-label="Usuario"><option value="">Todos los usuarios</option></select>
+          <select class="form-input" id="wm-f-accion" aria-label="Acción"><option value="">Todas las acciones</option></select>
+          <label class="wm-fecha">Desde <input class="form-input" type="date" id="wm-f-desde"></label>
+          <label class="wm-fecha">Hasta <input class="form-input" type="date" id="wm-f-hasta"></label>
+          <button class="btn-prim" onclick="wmBuscarBitacora()"><i class="ti ti-filter"></i> Aplicar</button>
+          <span class="count-pill" id="wm-bit-count">0</span>
+        </div>
+        <div class="table-wrap">
+          <table class="admin-table wm-table">
+            <thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Detalle</th></tr></thead>
+            <tbody id="wm-bit-body"></tbody>
+          </table>
+        </div>
+        <div class="action-row"><button class="btn-out hidden" id="wm-bit-mas" onclick="wmMasBitacora()">Cargar más</button></div>
+      </div>
+
+      <div id="wm-sec-conexiones" class="hidden">
+        <p class="hint-text">Todas las conexiones entre empresas y si hubo contacto por el chat (cantidad de mensajes y fechas). Por privacidad, el contenido de los mensajes no es visible.</p>
+        <div class="wm-filtros">
+          <input class="form-input" type="text" id="wm-c-buscar" placeholder="Buscar empresa o categoría..." oninput="wmRenderConexiones()">
+          <select class="form-input" id="wm-c-estado" onchange="wmRenderConexiones()" aria-label="Estado">
+            <option value="">Todos los estados</option>
+            <option value="match">Match</option>
+            <option value="match_sin_contacto">Match sin contacto</option>
+            <option value="pendiente">Aceptada por una sola empresa</option>
+            <option value="rechazada">Rechazadas</option>
+            <option value="sugerida">Sin aceptaciones (retiradas)</option>
+          </select>
+          <span class="count-pill" id="wm-con-count">0</span>
+        </div>
+        <div class="table-wrap">
+          <table class="admin-table wm-table">
+            <thead><tr><th>Necesita</th><th>Ofrece</th><th>Categoría</th><th>Estado</th><th>Aceptó quien necesita</th><th>Aceptó quien ofrece</th><th>Contacto</th></tr></thead>
+            <tbody id="wm-con-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="wm-sec-categorias" class="hidden">
+        <p class="hint-text">Categorías y subcategorías sugeridas que usan las empresas al cargar ofertas y necesidades. Renombrar una categoría la actualiza en todas las empresas; no se puede borrar una categoría en uso.</p>
+        <div class="wm-cat-nueva">
+          <input class="form-input" type="text" id="wm-cat-nueva" placeholder="Nueva categoría (ej: Pintura industrial)" maxlength="80">
+          <textarea class="form-input wm-subs" id="wm-cat-nueva-subs" placeholder="Subcategorías sugeridas, separadas por coma (opcional)"></textarea>
+          <button class="btn-prim" onclick="wmCrearCategoria()"><i class="ti ti-plus"></i> Crear</button>
+        </div>
+        <div class="form-msg" id="wm-cat-msg"></div>
+        <div class="section-header mt-1"><div class="section-title">Categorías</div><span class="count-pill" id="wm-cat-count">0</span></div>
+        <div class="table-wrap">
+          <table class="admin-table wm-table">
+            <thead><tr><th>Nombre</th><th>Subcategorías sugeridas</th><th>En uso</th><th>Acciones</th></tr></thead>
+            <tbody id="wm-cat-body"></tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -456,6 +547,47 @@
     </div>
     <div class="form-msg" id="eu-msg"></div>
   </div>
+</div>
+
+<!-- MODAL: MATCH (con recomendaciones) -->
+<div class="modal-overlay" id="modal-match">
+  <div class="modal">
+    <div class="modal-header"><h2>¡Match!</h2><button class="modal-close" onclick="cerrarMatch()" aria-label="Cerrar"><i class="ti ti-x"></i></button></div>
+    <div id="match-body"></div>
+  </div>
+</div>
+
+<!-- MODAL: CHAT PRIVADO (una pestaña por conexión en match) -->
+<div class="modal-overlay" id="modal-chat">
+  <div class="modal modal-chat">
+    <div class="modal-header">
+      <div><h2 id="chat-title">Chat</h2><div class="muted-sm" id="chat-sub"></div></div>
+      <button class="modal-close" onclick="cerrarChat()" aria-label="Cerrar"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="chat-privacidad"><i class="ti ti-lock"></i> Chat privado: solo lo leen los usuarios de estas dos empresas. La plataforma registra que hubo contacto, no el contenido.</div>
+    <div class="chat-tabs" id="chat-tabs"></div>
+    <div class="chat-contexto" id="chat-contexto"></div>
+    <div class="chat-mensajes" id="chat-mensajes"></div>
+    <div class="chat-rec muted-sm" id="chat-rec"></div>
+    <div class="chat-input-row">
+      <textarea class="form-input" id="chat-input" rows="2" maxlength="4000" placeholder="Escribí un mensaje… (Enter para enviar, Shift+Enter para nueva línea)" aria-label="Mensaje"></textarea>
+      <button class="btn-prim" id="chat-send" onclick="enviarChat()"><i class="ti ti-send"></i> Enviar</button>
+    </div>
+    <div class="form-msg" id="chat-msg"></div>
+  </div>
+</div>
+
+<!-- GUÍA (chatbot con respuestas fijas) -->
+<div class="guia-wrap hidden" id="guia-wrap">
+  <div class="guia-panel" id="guia-panel" role="dialog" aria-label="Guía de la plataforma">
+    <div class="guia-header">
+      <div><i class="ti ti-message-chatbot"></i> Guía CUPFI</div>
+      <button onclick="guiaCerrar()" aria-label="Cerrar guía"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="guia-mensajes" id="guia-mensajes"></div>
+    <div class="guia-opciones" id="guia-opciones"></div>
+  </div>
+  <button class="guia-fab" id="guia-fab" onclick="guiaAbrir()" aria-label="Abrir guía"><i class="ti ti-message-chatbot"></i> Guía</button>
 </div>
 
 <script type="module" src="assets/js/main.ts"></script>

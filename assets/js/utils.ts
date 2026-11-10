@@ -68,6 +68,30 @@ interface ErrorLike {
   code?: string;
 }
 
+// Errores que lanzan a propósito las funciones de sql/012 (raise exception
+// 'CODIGO'), con el texto que ve el usuario.
+const MENSAJES_012: Array<[string, string]> = [
+  ['SIN_PERMISO_EMPRESA', 'No tenés permiso para actuar en nombre de esa empresa.'],
+  ['MISMO_TITULAR', 'No se pueden conectar dos empresas que comparten usuarios.'],
+  ['CONEXION_SIN_COINCIDENCIA', 'Esta conexión ya no tiene coincidencias actuales: alguna de las empresas cambió sus ofertas o necesidades.'],
+  ['CONEXION_RECHAZADA', 'Esta conexión fue rechazada y ya no se puede aceptar.'],
+  ['CONEXION_YA_EN_MATCH', 'Esta conexión ya está en match.'],
+  ['YA_ACEPTADA', 'Tu empresa ya había aceptado esta conexión.'],
+  ['NADA_PARA_RETIRAR', 'Tu empresa no había aceptado esta conexión.'],
+  ['CHAT_SIN_MATCH', 'El chat se habilita cuando las dos empresas aceptan la conexión.'],
+  ['MENSAJE_VACIO', 'Escribí un mensaje antes de enviar.'],
+  ['MENSAJE_LARGO', 'El mensaje es demasiado largo (máximo 4000 caracteres).'],
+  ['OTROS_REQUIERE_DETALLE', 'En la categoría "Otros" tenés que describir qué es en el campo de subcategoría.'],
+  ['CATEGORIA_INEXISTENTE', 'Una de las categorías elegidas ya no existe. Recargá la página y volvé a elegirla.'],
+  ['SUBCATEGORIA_LARGA', 'La subcategoría es demasiado larga (máximo 120 caracteres).'],
+  ['DEMASIADOS_ITEMS', 'Hay demasiadas ofertas y necesidades cargadas (máximo 120 en total).'],
+  ['CATEGORIA_OTROS_PROTEGIDA', 'La categoría "Otros" no se puede renombrar ni borrar.'],
+  ['WEBMASTER_SOLO_WEBMASTER', 'Solo un webmaster puede dar o quitar el permiso de webmaster.'],
+  ['WEBMASTER_PROPIO', 'No podés quitarte a vos mismo el permiso de webmaster.'],
+  ['WEBMASTER_REQUIERE_ADMIN', 'El permiso de webmaster solo se puede dar a un administrador.'],
+  ['SOLO_WEBMASTER', 'Esta sección es solo para webmasters.'],
+];
+
 // Traduce errores comunes de Supabase/Postgres a mensajes en español
 export function friendlyError(error: unknown): string {
   if (!error) return 'Ocurrió un error inesperado.';
@@ -80,6 +104,16 @@ export function friendlyError(error: unknown): string {
   if (/DUPLICATE_EMAIL/i.test(msg)) return 'Ya existe un usuario registrado con ese email.';
   if (/DUPLICATE_TEL/i.test(msg)) return 'Ya existe un usuario registrado con ese teléfono móvil.';
   if (/Database error saving new user/i.test(msg)) return 'Ya existe un usuario registrado con ese nombre, apellido, email o teléfono.';
+  // Códigos propios de sql/012_etapa1_conexiones.sql
+  const propio = MENSAJES_012.find(([code]) => msg.includes(code));
+  if (propio) return propio[1];
+  // Falta correr sql/012 en Supabase (tabla o función inexistente).
+  if (/(empresa_items|conexiones|categorias|mensajes|bitacora|guardar_items_empresa|conexion_responder)/i.test(msg) &&
+      (/does not exist|Could not find|schema cache/i.test(msg) || e.code === 'PGRST205' || e.code === 'PGRST202' || e.code === '42P01')) {
+    return 'La base de datos todavía no tiene la actualización de conexiones (falta correr sql/012_etapa1_conexiones.sql en Supabase).';
+  }
+  // Borrar una categoría que alguna empresa o conexión usa (foreign key).
+  if (e.code === '23503' && /categoria/i.test(msg)) return 'No se puede borrar la categoría: hay empresas o conexiones que la usan.';
   if (e.code === '23505' || /duplicate key/i.test(msg)) {
     if (/cuit/i.test(msg)) return 'Ya existe una empresa registrada con ese CUIT.';
     if (/nombre_apellido/i.test(msg)) return 'Ya existe un usuario registrado con ese nombre y apellido.';
