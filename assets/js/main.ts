@@ -10,7 +10,7 @@ import * as Conexiones from './conexiones.ts';
 import * as Webmaster from './webmaster.ts';
 import { calcularSugerencias, etiquetaItem } from './matching.ts';
 import { setContext } from './contexto.ts';
-import { initConexionesUI, resetConexionesUI } from './ui-conexiones.ts';
+import { contarMisPendientes, initConexionesUI, puedeVerRed, resetConexionesUI } from './ui-conexiones.ts';
 import { resetWebmasterUI } from './ui-webmaster.ts';
 import { iniciarGuia, resetGuia } from './ui-guia.ts';
 import { esc, ini, normCuit, isValidCuit, isValidEmail, isValidUrl, buildAddress, friendlyError, normalizeTagKey } from './utils.ts';
@@ -569,7 +569,11 @@ window.renderDir = function () {
   $('stat-total').textContent = String(orgs.length);
   $('stat-users').textContent = String(profiles.filter(u => u.role !== 'admin').length);
   $('stat-sectores').textContent = String(new Set(orgs.map(o => o.sector).filter(Boolean)).size);
-  $('stat-matches').textContent = String(calcularSugerencias(orgs, categorias).length);
+  // Admins y webmasters ven el total de la red; el resto, solo lo de sus
+  // empresas (las coincidencias entre otras empresas son privadas).
+  const verRed = puedeVerRed();
+  $('stat-matches-label').textContent = verRed ? 'Vinculaciones posibles (red)' : 'Mis vinculaciones pendientes';
+  $('stat-matches').textContent = String(verRed ? calcularSugerencias(orgs, categorias).length : contarMisPendientes());
   $('dir-count').textContent = String(filtered.length);
 
   const grid = $('org-grid');
@@ -816,7 +820,11 @@ window.renderMias = function () {
 window.openDetail = function (id) {
   const o = orgs.find(x => x.id === id);
   if (!o) return;
-  const mx = calcularSugerencias(orgs, categorias).filter(s => s.necesita.id === o.id);
+  // Quién puede cubrir las necesidades de esta empresa: solo para sus
+  // propios usuarios, admins y webmasters (es información privada).
+  const mx = (puedeVerRed() || esUsuarioDeEmpresa(o, currentProfile!.id))
+    ? calcularSugerencias(orgs, categorias).filter(s => s.necesita.id === o.id)
+    : [];
   const mine = currentProfile && (esUsuarioDeEmpresa(o, currentProfile.id) || currentProfile.role === 'admin');
   const addr = buildAddress(o);
   const u = getProfileById(o.uid);
