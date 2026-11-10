@@ -3,7 +3,10 @@
 // Mapea entre camelCase (JS) y snake_case (columnas Postgres)
 // ══════════════════════════════════════════════
 import { getSupabase } from './supabaseClient.ts';
-import type { Database, Empresa, EmpresaFields, EmpresaInput, EmpresaRow, EmpresaUsuarioRow } from './types.ts';
+import type {
+  Categoria, CategoriaRow, Database, Empresa, EmpresaFields, EmpresaInput, EmpresaItem, EmpresaItemRow,
+  EmpresaRow, EmpresaUsuarioRow,
+} from './types.ts';
 
 type EmpresaInsert = Database['public']['Tables']['empresas']['Insert'];
 
@@ -26,10 +29,9 @@ function fromDb(row: EmpresaRow): Empresa {
     web: row.web ?? '',
     desc: row.descripcion ?? '',
     logo: row.logo,
-    ofertas: row.ofertas || [],
     instalaciones: row.instalaciones || [],
-    needsUncovered: row.needs_uncovered || [],
     needsCovered: row.needs_covered || [],
+    items: [], // se completan en main.ts con listItems()
   };
 }
 
@@ -50,9 +52,7 @@ function toDb(o: EmpresaInput): Partial<EmpresaRow> {
   if ('web' in o) out.web = o.web;
   if ('desc' in o) out.descripcion = o.desc;
   if ('logo' in o) out.logo = o.logo;
-  if ('ofertas' in o) out.ofertas = o.ofertas;
   if ('instalaciones' in o) out.instalaciones = o.instalaciones;
-  if ('needsUncovered' in o) out.needs_uncovered = o.needsUncovered;
   if ('needsCovered' in o) out.needs_covered = o.needsCovered;
   return out;
 }
@@ -124,6 +124,72 @@ export async function desasignarUsuario(empresaId: number, userId: string): Prom
   const supabase = await getSupabase();
   const { error } = await supabase.from('empresa_usuarios').delete().eq('empresa_id', empresaId).eq('user_id', userId);
   if (error) throw error;
+}
+
+// ══════════════════════════════════════════════
+// OFERTAS / NECESIDADES (categoría + subcategoría, tabla empresa_items)
+// ══════════════════════════════════════════════
+function itemFromDb(r: EmpresaItemRow): EmpresaItem {
+  return { tipo: r.tipo, categoriaId: r.categoria_id, subcategoria: r.subcategoria || '', revisar: !!r.revisar };
+}
+
+// Todos los ítems de todas las empresas, agrupados por empresa.
+export async function listItems(): Promise<Map<number, EmpresaItem[]>> {
+  const supabase = await getSupabase();
+  const { data, error } = await supabase.from('empresa_items').select('*').order('id', { ascending: true });
+  if (error) throw error;
+  const map = new Map<number, EmpresaItem[]>();
+  for (const r of data) {
+    if (!map.has(r.empresa_id)) map.set(r.empresa_id, []);
+    map.get(r.empresa_id)!.push(itemFromDb(r));
+  }
+  return map;
+}
+
+// Reemplaza todas las ofertas y necesidades de una empresa (lo valida y
+// registra la base: guardar_items_empresa en sql/012).
+export async function guardarItems(empresaId: number, items: EmpresaItem[]): Promise<EmpresaItem[]> {
+  const supabase = await getSupabase();
+  const { data, error } = await supabase.rpc('guardar_items_empresa', {
+    p_empresa: empresaId,
+    p_items: items.map(i => ({ tipo: i.tipo, categoria_id: i.categoriaId, subcategoria: i.subcategoria })),
+  });
+  if (error) throw error;
+  return (data || []).map(itemFromDb);
+}
+
+// ══════════════════════════════════════════════
+// CATEGORÍAS (lectura para todos; alta/edición/baja solo webmasters, RLS)
+// ══════════════════════════════════════════════
+function categoriaFromDb(r: CategoriaRow): Categoria {
+  return { id: r.id, nombre: r.nombre, subcategorias: r.subcategorias || [], orden: r.orden, esOtros: !!r.es_otros };
+}
+
+export async function listCategorias(): Promise<Categoria[]> {
+  const supabase = await getSupabase();
+  const { data, error } = await supabase.from('categorias').select('*').order('orden', { ascending: true }).order('nombre', { ascending: true });
+  if (error) throw error;
+  return data.map(categoriaFromDb);
+}
+
+export async function crearCategoria(nombre: string, subcategorias: string[]): Promise<void> {
+  const supabase = await getSupabase();
+  const { error } = await supabase.from('categorias').insert({ nombre, subcategorias, orden: 500 });
+  if (error) throw error;
+}
+
+export async function actualizarCategoria(id: number, nombre: string, subcategorias: string[]): Promise<void> {
+  const supabase = await getSupabase();
+  const { data, error } = await supabase.from('categorias').update({ nombre, subcategorias }).eq('id', id).select('id');
+  if (error) throw error;
+  if (!data?.length) throw new Error('No se pudo guardar la categoría (¿tenés permiso de webmaster?).');
+}
+
+export async function borrarCategoria(id: number): Promise<void> {
+  const supabase = await getSupabase();
+  const { data, error } = await supabase.from('categorias').delete().eq('id', id).select('id');
+  if (error) throw error;
+  if (!data?.length) throw new Error('No se pudo borrar la categoría.');
 }
 
 const MAX_LOGO_BYTES = 800_000; // 800 KB

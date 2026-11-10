@@ -246,3 +246,24 @@ export async function syncEmailFromAuth(): Promise<Profile | null> {
   if (error) throw error;
   return data;
 }
+
+// Registra en la bitácora el inicio o cierre de sesión (solo esos dos
+// eventos se pueden registrar desde el navegador, ver registrar_evento en
+// sql/012). Nunca debe romper el login/logout: los errores se ignoran.
+export async function registrarEvento(accion: 'sesion_inicio' | 'sesion_cierre'): Promise<void> {
+  try {
+    const supabase = await getSupabase();
+    const { error } = await supabase.rpc('registrar_evento', { p_accion: accion });
+    if (error) console.warn('No se pudo registrar el evento en la bitácora:', error.message);
+  } catch (e) {
+    console.warn('No se pudo registrar el evento en la bitácora:', e);
+  }
+}
+
+// Marca que el usuario ya vio la guía del primer ingreso (se guarda en su
+// cuenta, así no reaparece al entrar desde otro dispositivo).
+export async function marcarGuiaVista(): Promise<void> {
+  const supabase = await getSupabase();
+  const { error } = await supabase.rpc('marcar_guia_vista', {});
+  if (error) throw error;
+}

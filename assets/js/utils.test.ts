@@ -98,4 +98,25 @@ describe('friendlyError', () => {
     expect(friendlyError({ message: 'Password should be at least 6 characters' }))
       .toBe('La contraseña debe tener al menos 8 caracteres.');
   });
+
+  it('traduce los códigos de las funciones de sql/012', () => {
+    expect(friendlyError({ code: 'P0001', message: 'SIN_PERMISO_EMPRESA' })).toBe('No tenés permiso para actuar en nombre de esa empresa.');
+    expect(friendlyError({ code: 'P0001', message: 'CHAT_SIN_MATCH' })).toBe('El chat se habilita cuando las dos empresas aceptan la conexión.');
+    expect(friendlyError({ code: 'P0001', message: 'OTROS_REQUIERE_DETALLE' })).toContain('Otros');
+  });
+
+  it('no confunde SOLO_WEBMASTER con WEBMASTER_SOLO_WEBMASTER', () => {
+    expect(friendlyError({ message: 'WEBMASTER_SOLO_WEBMASTER' })).toBe('Solo un webmaster puede dar o quitar el permiso de webmaster.');
+    expect(friendlyError({ message: 'SOLO_WEBMASTER' })).toBe('Esta sección es solo para webmasters.');
+  });
+
+  it('avisa si falta correr la migración sql/012', () => {
+    expect(friendlyError({ code: 'PGRST205', message: "Could not find the table 'public.empresa_items' in the schema cache" }))
+      .toContain('sql/012_etapa1_conexiones.sql');
+  });
+
+  it('explica por qué no se puede borrar una categoría en uso', () => {
+    expect(friendlyError({ code: '23503', message: 'update or delete on table "categorias" violates foreign key constraint "empresa_items_categoria_id_fkey"' }))
+      .toBe('No se puede borrar la categoría: hay empresas o conexiones que la usan.');
+  });
 });
