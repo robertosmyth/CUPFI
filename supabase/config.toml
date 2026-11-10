@@ -1,0 +1,7 @@
+# Configuración de Supabase usada al desplegar con la CLI.
+
+# admin-update-user valida la sesión dentro de la función (auth.getUser
+# + rol admin). El verificador automático de JWT no acepta los tokens
+# ES256 de las claves nuevas del proyecto, así que va desactivado.
+[functions.admin-update-user]
+verify_jwt = false
