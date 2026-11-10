@@ -25,7 +25,11 @@
 //
 // DESPLIEGUE: pegar este archivo tal cual en el dashboard de Supabase →
 // Edge Functions → Create a new function → nombre "admin-update-user" →
-// Deploy. No hace falta configurar ningún secreto a mano: SUPABASE_URL,
+// Deploy, con "Verify JWT" DESACTIVADO (ver supabase/config.toml). Ese
+// verificador automático no acepta los tokens firmados con las claves
+// nuevas de Supabase (ES256) y rechazaba todo pedido con 401 antes de
+// llegar a este código. La sesión igual se valida acá: auth.getUser(token)
+// la verifica contra el servidor de Auth y después se exige rol admin. No hace falta configurar ningún secreto a mano: SUPABASE_URL,
 // SUPABASE_ANON_KEY y SUPABASE_SERVICE_ROLE_KEY ya están disponibles
 // automáticamente en toda Edge Function del proyecto.
 // ══════════════════════════════════════════════
@@ -78,7 +82,11 @@ Deno.serve(async (req: Request) => {
       global: { headers: { Authorization: authHeader } },
     });
 
-    const { data: { user: caller }, error: callerError } = await callerClient.auth.getUser();
+    // El token se pasa explícito: en Edge Functions no hay sesión guardada
+    // y getUser() sin argumento no valida el header.
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+    if (!token) return json({ error: 'No autorizado.' }, 401);
+    const { data: { user: caller }, error: callerError } = await callerClient.auth.getUser(token);
     if (callerError || !caller) return json({ error: 'Sesión inválida.' }, 401);
 
     const { data: callerProfile, error: callerProfileError } = await callerClient
