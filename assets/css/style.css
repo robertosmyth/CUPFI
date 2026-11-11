@@ -480,3 +480,29 @@ details.cx-seccion > summary::-webkit-details-marker{display:none;}
 
 .stat-card--link{cursor:pointer;}
 .stat-card--link:hover{box-shadow:0 4px 14px rgba(59,36,200,.15);}
+
+/* SOLICITUDES (buscar y solicitar) */
+.sol-buscador{display:grid;grid-template-columns:minmax(160px,1fr) minmax(160px,1.3fr) auto;gap:8px;align-items:center;margin-bottom:8px;}
+.sol-resultado{gap:8px;}
+.sol-res-head{display:flex;justify-content:space-between;gap:8px;align-items:flex-start;}
+.sol-item-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:4px 0;border-top:1px dashed var(--fi-light2);}
+.sol-item-accion{margin-left:auto;}
+.sol-card{border-left-color:#7e57c2;}
+.sol-card.sol-aceptada{border-left-color:#2e7d32;}
+.sol-card.sol-rechazada,.sol-card.sol-cancelada{border-left-color:#bdbdbd;opacity:.8;}
+.sol-frase{font-size:12px;line-height:1.7;color:#222;}
+.sol-frase .tag{font-size:11px;}
+.sol-msg-inicial{font-size:12px;color:#333;background:var(--fi-light);border-radius:4px;padding:6px 10px;white-space:pre-wrap;word-break:break-word;}
+.sol-msg-inicial:empty{display:none;}
+.sol-check{display:flex;gap:8px;align-items:flex-start;font-size:12px;color:#333;margin:4px 0 8px;cursor:pointer;}
+.sol-check input{margin-top:3px;}
+.sol-aviso{margin-bottom:6px;}
+.sol-aviso:empty{display:none;}
+/* Carga rápida de ítems en el detalle de la empresa */
+.det-add{display:grid;grid-template-columns:minmax(130px,1fr) minmax(130px,1.3fr) auto;gap:6px;align-items:center;margin-top:8px;}
+.tag-quitar{border:none;background:transparent;color:inherit;cursor:pointer;font-size:12px;line-height:1;padding:0 0 0 2px;opacity:.7;}
+.tag-quitar:hover{opacity:1;}
+@media (max-width: 780px){
+  .sol-buscador,.det-add{grid-template-columns:1fr;}
+  .sol-item-accion{margin-left:0;width:100%;}
+}

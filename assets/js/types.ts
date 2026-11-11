@@ -129,6 +129,53 @@ export type ContactoResumenRow = {
   ultimo_mensaje: string;
 };
 
+export type SolicitudTipo = 'conseguir' | 'ofrecer';
+export type SolicitudEstado = 'pendiente' | 'aceptada' | 'rechazada' | 'cancelada';
+export type SolicitudAccion = 'aceptar' | 'rechazar' | 'cancelar';
+
+// Ver sql/013_solicitudes.sql. Remitente: una empresa O una persona.
+export type SolicitudRow = {
+  id: number;
+  tipo: SolicitudTipo;
+  origen_empresa_id: number | null;
+  origen_persona_id: string | null;
+  enviada_por: string | null;
+  destino_empresa_id: number;
+  categoria_id: number;
+  subcategoria: string;
+  estado: SolicitudEstado;
+  respondida_at: string | null;
+  respondida_por: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SolicitudMensajeRow = {
+  id: number;
+  solicitud_id: number;
+  lado: 'origen' | 'destino';
+  autor_id: string | null;
+  contenido: string;
+  created_at: string;
+};
+
+export type SolicitudResumenRow = {
+  solicitud_id: number;
+  lado: 'origen' | 'destino';
+  cantidad: number;
+  primer_mensaje: string;
+  ultimo_mensaje: string;
+};
+
+// Resultado de solicitud_enviar: si ya había coincidencia automática con
+// esa empresa, la solicitud cuenta como aceptación de la conexión.
+export type SolicitudEnvioResultado = {
+  resultado: 'solicitud' | 'conexion_aceptada' | 'conexion_match' | 'conexion_ya_aceptada' | 'conexion_en_match';
+  solicitud_id: number | null;
+  conexion_id: number | null;
+  item_agregado: boolean;
+};
+
 export type EmpresaUsuarioRow = {
   empresa_id: number;
   user_id: string;
@@ -207,6 +254,18 @@ export interface Database {
         Update: never;
         Relationships: [];
       };
+      solicitudes: {
+        Row: SolicitudRow;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      solicitud_mensajes: {
+        Row: SolicitudMensajeRow;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
     };
     // OJO: acá tiene que ir un tipo SIN index signature (no
     // Record<string, never>). Un Record<string, never> sí tiene index
@@ -249,6 +308,33 @@ export interface Database {
         Args: Record<never, never>;
         Returns: undefined;
       };
+      empresa_item_agregar: {
+        Args: { p_empresa: number; p_tipo: ItemTipo; p_categoria: number; p_subcategoria: string };
+        Returns: EmpresaItemRow;
+      };
+      empresa_item_quitar: {
+        Args: { p_item: number };
+        Returns: undefined;
+      };
+      solicitud_enviar: {
+        Args: {
+          p_tipo: SolicitudTipo; p_origen_empresa: number | null; p_destino: number; p_categoria: number;
+          p_subcategoria: string; p_mensaje: string | null; p_agregar_item: boolean;
+        };
+        Returns: SolicitudEnvioResultado;
+      };
+      solicitud_responder: {
+        Args: { p_solicitud: number; p_accion: SolicitudAccion };
+        Returns: SolicitudRow;
+      };
+      solicitud_enviar_mensaje: {
+        Args: { p_solicitud: number; p_contenido: string };
+        Returns: SolicitudMensajeRow;
+      };
+      webmaster_solicitudes_resumen: {
+        Args: Record<never, never>;
+        Returns: SolicitudResumenRow[];
+      };
     };
     Enums: Record<never, never>;
     CompositeTypes: Record<never, never>;
@@ -283,6 +369,7 @@ export interface Categoria {
 
 // Una oferta o necesidad de una empresa: categoría + subcategoría.
 export interface EmpresaItem {
+  id?: number; // id en empresa_items (no lo tienen los ítems nuevos del formulario)
   tipo: ItemTipo;
   categoriaId: number;
   subcategoria: string;

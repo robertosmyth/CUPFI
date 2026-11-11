@@ -4,12 +4,17 @@
 // y chat privado con una pestaña por conexión en match.
 // ══════════════════════════════════════════════
 import * as Conexiones from './conexiones.ts';
+import * as Solicitudes from './solicitudes.ts';
+import {
+  cargarMensajesIniciales, contarSolicitudesPendientesRecibidas, fraseSolicitud, miLado, nombreDestino, nombreOrigen,
+  renderBuscar, resetSolicitudesUI, seccionesSolicitudes,
+} from './ui-solicitudes.ts';
 import { app, fechaHora, nombreUsuario } from './contexto.ts';
 import {
   armarMisConexiones, calcularSugerencias, matchesEntre, recomendacionesPara, type ConexionVista,
 } from './matching.ts';
 import { esc, friendlyError } from './utils.ts';
-import type { ConexionAccion, EstadoConexion, MensajeRow, ParCoincidencia, Sugerencia } from './types.ts';
+import type { ConexionAccion, EstadoConexion, MensajeRow, ParCoincidencia, SolicitudMensajeRow, Sugerencia } from './types.ts';
 
 declare global {
   interface Window {
@@ -27,7 +32,7 @@ declare global {
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
 
-let vinVista: 'mias' | 'red' = 'mias';
+let vinVista: 'mias' | 'buscar' | 'red' = 'mias';
 let vinFiltro: 'todos' | 'exacta' | 'categoria' = 'todos';
 let ultimasVistas: ConexionVista[] = [];
 
@@ -39,8 +44,10 @@ export function puedeVerRed(): boolean {
 
 // Conexiones de mis empresas que esperan algo: sugeridas, esperando a la
 // otra empresa o esperando mi respuesta (para el contador del inicio).
+// También suma las solicitudes recibidas que esperan respuesta.
 export function contarMisPendientes(): number {
-  return misVistas().filter(v => v.vigente && (v.estado === 'sugerida' || v.estado === 'otra_acepto' || v.estado === 'esperando_otra')).length;
+  return misVistas().filter(v => v.vigente && (v.estado === 'sugerida' || v.estado === 'otra_acepto' || v.estado === 'esperando_otra')).length
+    + contarSolicitudesPendientesRecibidas();
 }
 
 function misVistas(): ConexionVista[] {
@@ -165,7 +172,7 @@ function coincideBusqueda(q: string, necesita: string, ofrece: string, categoria
 window.setVinVista = function (el, vista) {
   document.querySelectorAll('#vin-vistas .chip').forEach(c => c.classList.remove('active'));
   el.classList.add('active');
-  vinVista = vista === 'red' && puedeVerRed() ? 'red' : 'mias';
+  vinVista = vista === 'red' && puedeVerRed() ? 'red' : vista === 'buscar' ? 'buscar' : 'mias';
   window.renderVin();
 };
 
@@ -182,13 +189,19 @@ window.renderVin = function () {
   const list = $('vin-list');
   // La vista "Toda la red" solo existe para admins y webmasters.
   const verRed = puedeVerRed();
-  $('vin-vistas').classList.toggle('hidden', !verRed);
+  $('vin-chip-red').classList.toggle('hidden', !verRed);
   if (!verRed && vinVista === 'red') {
     vinVista = 'mias';
     document.querySelectorAll('#vin-vistas .chip').forEach((c, i) => c.classList.toggle('active', i === 0));
   }
   $('vin-hint-mias').classList.toggle('hidden', vinVista !== 'mias');
   $('vin-hint-red').classList.toggle('hidden', vinVista !== 'red');
+  // El buscador de solicitudes tiene su propio formulario.
+  const buscar = vinVista === 'buscar';
+  $('vin-buscar').classList.toggle('hidden', !buscar);
+  $('vin-title').textContent = buscar ? 'Buscar y solicitar' : 'Conexiones';
+  ['vin-search-row', 'vin-filtros', 'vin-list'].forEach(id => $(id).classList.toggle('hidden', buscar));
+  if (buscar) { renderBuscar(); return; }
 
   if (vinVista === 'red') {
     const todas = calcularSugerencias(c.orgs, c.categorias);
@@ -202,17 +215,24 @@ window.renderVin = function () {
     return;
   }
 
+  const sol = seccionesSolicitudes(q);
   if (!c.misEmpresas().size) {
-    $('vin-count').textContent = '0';
-    list.innerHTML = `<div class="empty"><i class="ti ti-building-plus"></i>Para tener conexiones primero cargá tu empresa con lo que ofrece y lo que necesita.<br><br>
-      <button class="btn-prim" onclick="showScreen('registrar')">Agregar empresa</button></div>`;
+    // Sin empresas no hay conexiones automáticas, pero sí puede tener
+    // solicitudes enviadas a título personal.
+    $('vin-count').textContent = String(sol.total);
+    list.innerHTML = sol.recibidas + sol.enviadas + sol.aceptadas + sol.cerradas +
+      `<div class="empty"><i class="ti ti-building-plus"></i>Para tener conexiones automáticas primero cargá tu empresa con lo que ofrece y lo que necesita.
+      También podés buscar un servicio o necesidad y enviar una solicitud a tu nombre.<br><br>
+      <button class="btn-prim" onclick="showScreen('registrar')">Agregar empresa</button>
+      <button class="btn-out" onclick="setVinVista(document.getElementById('vin-chip-buscar'),'buscar')"><i class="ti ti-search"></i> Buscar y solicitar</button></div>`;
+    void cargarMensajesIniciales();
     return;
   }
 
   const vistas = misVistas().filter(v =>
     (vinFiltro === 'todos' || v.nivel === vinFiltro) &&
     coincideBusqueda(q, v.necesita.nombre, v.ofrece.nombre, v.categoria.nombre, v.pares));
-  $('vin-count').textContent = String(vistas.length);
+  $('vin-count').textContent = String(vistas.length + sol.total);
 
   const secciones: Array<{ estado: EstadoConexion; titulo: string; icono: string }> = [
     { estado: 'otra_acepto', titulo: 'Esperan tu respuesta', icono: 'ti-bell-ringing' },
@@ -230,7 +250,9 @@ window.renderVin = function () {
     }
     return `<div class="cx-seccion"><div class="cx-seccion-titulo"><i class="ti ${sec.icono}"></i> ${sec.titulo} <span class="count-pill">${items.length}</span></div>${cuerpo}</div>`;
   }).join('');
-  if (html) { list.innerHTML = html; return; }
+  // Solicitudes: las recibidas arriba de todo y el resto después de las conexiones.
+  const conSol = sol.recibidas + html + sol.enviadas + sol.aceptadas + sol.cerradas;
+  if (conSol) { list.innerHTML = conSol; void cargarMensajesIniciales(); return; }
   // Sin conexiones: si sus ítems siguen en "Otros" (formato anterior), es
   // casi seguro el motivo, porque "Otros" solo conecta con detalle idéntico.
   const mias = c.orgs.filter(o => c.misEmpresas().has(o.id));
@@ -289,7 +311,14 @@ window.cerrarMatch = function () {
 };
 
 // ─── Chat ──────────────────────────────────────────────────────────
-interface ChatEstado { mia: number; otra: number; activa: number | null; ultimoId: number }
+// Chat de conexiones (una pestaña por conexión en match entre dos
+// empresas) o de una solicitud aceptada (solicitud != null, sin pestañas).
+interface ChatEstado {
+  mia: number; otra: number; activa: number | null; ultimoId: number;
+  solicitud: number | null; lado: 'origen' | 'destino' | null;
+}
+const PRIVACIDAD_CONEXION = 'Chat privado: solo lo leen los usuarios de estas dos empresas. La plataforma registra que hubo contacto, no el contenido.';
+const PRIVACIDAD_SOLICITUD = 'Chat privado: solo lo leen las dos partes de esta solicitud. La plataforma registra que hubo contacto, no el contenido.';
 let chat: ChatEstado | null = null;
 let chatTimer: ReturnType<typeof setInterval> | null = null;
 const CHAT_REFRESCO_MS = 6000;
@@ -300,7 +329,7 @@ function pestanasChat(): ConexionVista[] {
 }
 
 window.abrirChat = function (miEmpresaId, otraEmpresaId, conexionId) {
-  chat = { mia: miEmpresaId, otra: otraEmpresaId, activa: conexionId ?? null, ultimoId: 0 };
+  chat = { mia: miEmpresaId, otra: otraEmpresaId, activa: conexionId ?? null, ultimoId: 0, solicitud: null, lado: null };
   const tabs = pestanasChat();
   if (!tabs.length) { chat = null; alert('Todavía no hay conexiones en match con esta empresa.'); return; }
   if (!chat.activa || !tabs.some(t => t.row!.id === chat!.activa)) chat.activa = tabs[0].row!.id;
@@ -308,6 +337,25 @@ window.abrirChat = function (miEmpresaId, otraEmpresaId, conexionId) {
   const mia = app().orgs.find(o => o.id === miEmpresaId);
   $('chat-title').textContent = `Chat con ${otra?.nombre || 'la empresa'}`;
   $('chat-sub').textContent = `Escribís como ${mia?.nombre || 'tu empresa'}`;
+  $('chat-privacidad-txt').textContent = PRIVACIDAD_CONEXION;
+  ($<HTMLTextAreaElement>('chat-input')).value = '';
+  $('chat-msg').style.display = 'none';
+  renderChatTabs();
+  $('modal-chat').classList.add('open');
+  void cargarMensajes(true);
+  if (chatTimer) clearInterval(chatTimer);
+  chatTimer = setInterval(() => { void cargarMensajes(false); }, CHAT_REFRESCO_MS);
+};
+
+window.abrirChatSolicitud = function (id) {
+  const s = app().solicitudes.find(x => x.id === id);
+  const lado = s ? miLado(s) : null;
+  if (!s || !lado) return;
+  if (s.estado !== 'aceptada') { alert('El chat se habilita cuando la empresa acepta la solicitud.'); return; }
+  chat = { mia: 0, otra: 0, activa: id, ultimoId: 0, solicitud: id, lado };
+  $('chat-title').textContent = `Chat con ${lado === 'origen' ? nombreDestino(s) : nombreOrigen(s)}`;
+  $('chat-sub').textContent = `Escribís como ${lado === 'origen' ? nombreOrigen(s) : nombreDestino(s)}`;
+  $('chat-privacidad-txt').textContent = PRIVACIDAD_SOLICITUD;
   ($<HTMLTextAreaElement>('chat-input')).value = '';
   $('chat-msg').style.display = 'none';
   renderChatTabs();
@@ -325,6 +373,13 @@ window.cerrarChat = function () {
 
 function renderChatTabs(): void {
   if (!chat) return;
+  if (chat.solicitud) {
+    const s = app().solicitudes.find(x => x.id === chat!.solicitud);
+    $('chat-tabs').innerHTML = '';
+    $('chat-contexto').innerHTML = s ? `<div class="sol-frase">${fraseSolicitud(s)}</div>` : '';
+    $('chat-rec').innerHTML = '';
+    return;
+  }
   const tabs = pestanasChat();
   $('chat-tabs').innerHTML = tabs.map(t => `<button class="chat-tab${t.row!.id === chat!.activa ? ' active' : ''}" onclick="chatTab(${t.row!.id})"
       title="${esc(t.necesita.nombre)} necesita ${esc(t.categoria.nombre)}">
@@ -350,9 +405,10 @@ window.chatTab = function (conexionId) {
 async function cargarMensajes(forzar: boolean): Promise<void> {
   if (!chat || !chat.activa) return;
   const conexionId = chat.activa;
+  const solicitud = chat.solicitud;
   try {
-    const msgs = await Conexiones.listMensajes(conexionId);
-    if (!chat || chat.activa !== conexionId) return; // cambió de pestaña mientras cargaba
+    const msgs = solicitud ? await Solicitudes.listMensajes(solicitud) : await Conexiones.listMensajes(conexionId);
+    if (!chat || chat.activa !== conexionId || chat.solicitud !== solicitud) return; // cambió de pestaña mientras cargaba
     const ultimo = msgs.length ? msgs[msgs.length - 1].id : 0;
     if (!forzar && ultimo === chat.ultimoId) return;
     chat.ultimoId = ultimo;
@@ -362,17 +418,25 @@ async function cargarMensajes(forzar: boolean): Promise<void> {
   }
 }
 
-function renderMensajes(msgs: MensajeRow[]): void {
+function renderMensajes(msgs: Array<MensajeRow | SolicitudMensajeRow>): void {
   if (!chat) return;
   const box = $('chat-mensajes');
   const abajo = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
   const orgs = app().orgs;
+  const sol = chat.solicitud ? app().solicitudes.find(x => x.id === chat!.solicitud) : undefined;
   box.innerHTML = msgs.length
     ? msgs.map(m => {
-        const propio = m.empresa_id === chat!.mia;
-        const emp = orgs.find(o => o.id === m.empresa_id);
+        let propio: boolean;
+        let parte: string;
+        if ('lado' in m) {
+          propio = m.lado === chat!.lado;
+          parte = sol ? (m.lado === 'origen' ? nombreOrigen(sol) : nombreDestino(sol)) : '';
+        } else {
+          propio = m.empresa_id === chat!.mia;
+          parte = orgs.find(o => o.id === m.empresa_id)?.nombre || '';
+        }
         return `<div class="chat-burbuja${propio ? ' propio' : ''}">
-          <div class="chat-autor">${esc(nombreUsuario(m.autor_id))} · ${esc(emp?.nombre || '')}</div>
+          <div class="chat-autor">${esc(nombreUsuario(m.autor_id))} · ${esc(parte)}</div>
           <div class="chat-texto">${esc(m.contenido)}</div>
           <div class="chat-hora">${esc(fechaHora(m.created_at))}</div>
         </div>`;
@@ -390,7 +454,8 @@ window.enviarChat = async function () {
   const btn = $<HTMLButtonElement>('chat-send');
   btn.disabled = true;
   try {
-    await Conexiones.enviarMensaje(chat.activa, texto);
+    if (chat.solicitud) await Solicitudes.enviarMensaje(chat.solicitud, texto);
+    else await Conexiones.enviarMensaje(chat.activa, texto);
     input.value = '';
     $('chat-msg').style.display = 'none';
     await cargarMensajes(true);
@@ -425,4 +490,5 @@ export function resetConexionesUI(): void {
   document.querySelectorAll('#vin-vistas .chip').forEach((c, i) => c.classList.toggle('active', i === 0));
   window.cerrarChat();
   window.cerrarMatch();
+  resetSolicitudesUI();
 }
