@@ -75,6 +75,12 @@ describe('friendlyError', () => {
     expect(friendlyError({ message: 'Invalid login credentials' })).toBe('Email o contraseña incorrectos.');
   });
 
+  it('traduce "misma contraseña" y "sesión faltante" de Supabase Auth', () => {
+    expect(friendlyError({ message: 'New password should be different from the old password.', code: 'same_password' }))
+      .toBe('La contraseña nueva tiene que ser distinta de la anterior.');
+    expect(friendlyError({ message: 'Auth session missing!' })).toMatch(/La sesión venció/);
+  });
+
   it('traduce duplicidad de CUIT por código postgres', () => {
     expect(friendlyError({ code: '23505', message: 'duplicate key value violates unique constraint "empresas_cuit_key"' }))
       .toBe('Ya existe una empresa registrada con ese CUIT.');

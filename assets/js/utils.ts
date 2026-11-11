@@ -124,6 +124,8 @@ export function friendlyError(error: unknown): string {
   if (/Invalid login credentials/i.test(msg)) return 'Email o contraseña incorrectos.';
   if (/User already registered/i.test(msg)) return 'Ya existe una cuenta con ese email.';
   if (/Password should be at least/i.test(msg)) return 'La contraseña debe tener al menos 8 caracteres.';
+  if (/different from the old password/i.test(msg) || e.code === 'same_password') return 'La contraseña nueva tiene que ser distinta de la anterior.';
+  if (/Auth session missing/i.test(msg)) return 'La sesión venció. Volvé a iniciar sesión (o pedí un nuevo link para restablecer la contraseña).';
   if (/Email not confirmed/i.test(msg)) return 'Confirmá tu email antes de iniciar sesión (revisá tu bandeja de entrada).';
   // Cooldown por pedido repetido (por ejemplo, click doble en "reenviar
   // email" o en "olvidé mi contraseña"): Supabase deja pasar un rato fijo
