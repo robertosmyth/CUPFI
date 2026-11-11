@@ -88,6 +88,28 @@ const MENSAJES_012: Array<[string, string]> = [
   ['ITEM_INEXISTENTE', 'Ese ítem ya no existe. Recargá la página.'],
   ['CHAT_SIN_ACEPTAR', 'El chat se habilita cuando la empresa acepta la solicitud.'],
   ['EMPRESA_INEXISTENTE', 'La empresa ya no existe. Recargá la página.'],
+  // sql/014 (blog)
+  ['BLOG_VACIO', 'Escribí algo o agregá una foto o un video.'],
+  ['BLOG_TEXTO_LARGO', 'El texto puede tener hasta 5000 caracteres.'],
+  ['BLOG_COMENTARIO_LARGO', 'El comentario puede tener hasta 2000 caracteres.'],
+  ['BLOG_DEMASIADAS_IMAGENES', 'Podés agregar hasta 4 fotos.'],
+  ['BLOG_IMAGEN_O_VIDEO', 'Una publicación lleva fotos o un video, no las dos cosas.'],
+  ['BLOG_MEDIA_INVALIDA', 'Hay un archivo repetido o inválido. Quitalo y volvé a agregarlo.'],
+  ['BLOG_ARCHIVO_INEXISTENTE', 'No se encontró uno de los archivos subidos. Volvé a agregarlo.'],
+  ['BLOG_ARCHIVO_GRANDE', 'Un archivo supera el tamaño permitido (fotos 5 MB, video 50 MB).'],
+  ['BLOG_ARCHIVO_TIPO', 'Formato no permitido (fotos JPG, PNG, WebP o GIF; video MP4 o WebM).'],
+  ['BLOG_ARCHIVO_EN_USO', 'Ese archivo ya está en otra publicación.'],
+  ['BLOG_VIDEO_URL_INVALIDA', 'El link tiene que ser de un video de YouTube o Vimeo (https://…).'],
+  ['BLOG_DEMASIADO_RAPIDO', 'Estás publicando muy seguido. Esperá unos minutos.'],
+  ['BLOG_SIN_PERMISO', 'Solo su autor puede hacer eso.'],
+  ['BLOG_OCULTO', 'Un webmaster ocultó este contenido: no se puede editar.'],
+  ['BLOG_NO_DISPONIBLE', 'Esta publicación o comentario ya no está disponible. Recargá la página.'],
+  ['BLOG_INEXISTENTE', 'Ya no existe. Recargá la página.'],
+  ['BLOG_RESPUESTA_INVALIDA', 'Solo se puede responder a un comentario principal.'],
+  ['BLOG_DENUNCIA_PROPIA', 'No podés denunciar algo tuyo.'],
+  ['BLOG_DENUNCIA_SIN_MOTIVO', 'Escribí el motivo de la denuncia.'],
+  ['BLOG_DENUNCIA_LARGA', 'El motivo puede tener hasta 500 caracteres.'],
+  ['BLOG_YA_DENUNCIADO', 'Ya denunciaste esto; los webmasters lo están revisando.'],
   ['SIN_PERMISO_EMPRESA', 'No tenés permiso para actuar en nombre de esa empresa.'],
   ['MISMO_TITULAR', 'No se pueden conectar dos empresas que comparten usuarios.'],
   ['CONEXION_SIN_COINCIDENCIA', 'Esta conexión ya no tiene coincidencias actuales: alguna de las empresas cambió sus ofertas o necesidades.'],
@@ -124,6 +146,13 @@ export function friendlyError(error: unknown): string {
   // Códigos propios de sql/012_etapa1_conexiones.sql
   const propio = MENSAJES_012.find(([code]) => msg.includes(code));
   if (propio) return propio[1];
+  // Falta correr sql/014 en Supabase.
+  if (/blog_/i.test(msg) && (/does not exist|Could not find|schema cache/i.test(msg) || e.code === 'PGRST205' || e.code === 'PGRST202' || e.code === '42P01')) {
+    return 'El blog todavía no está habilitado en la base de datos (falta correr sql/014_blog.sql en Supabase).';
+  }
+  if (/Bucket not found/i.test(msg)) return 'El blog todavía no está habilitado en la base de datos (falta correr sql/014_blog.sql en Supabase).';
+  if (/payload too large|exceeded the maximum allowed size/i.test(msg)) return 'El archivo supera el tamaño permitido (fotos 5 MB, video 50 MB).';
+  if (/mime type .* is not supported|invalid_mime_type/i.test(msg)) return 'Formato no permitido (fotos JPG, PNG, WebP o GIF; video MP4 o WebM).';
   // Falta correr sql/013 en Supabase.
   if (/(solicitud|empresa_item_agregar|empresa_item_quitar)/i.test(msg) &&
       (/does not exist|Could not find|schema cache/i.test(msg) || e.code === 'PGRST205' || e.code === 'PGRST202' || e.code === '42P01')) {

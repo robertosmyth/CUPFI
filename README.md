@@ -45,6 +45,7 @@ CUPFI/
 │   ├── 011_empresa_uid_on_delete_set_null.sql # Migración para el proyecto ya existente (ver más abajo)
 │   ├── 012_etapa1_conexiones.sql          # Categorías, conexiones, chat, webmaster, bitácora y guía
 │   ├── 013_solicitudes.sql                # Solicitudes (buscar y pedir/ofrecer) y carga rápida de ítems
+│   ├── 014_blog.sql                       # Blog: publicaciones, fotos/videos, comentarios, me gusta, moderación
 │   └── historial/                         # Migraciones ya aplicadas al proyecto actual (solo referencia,
 │                                           # no hace falta correrlas en un proyecto nuevo: 001 ya las incluye)
 ├── supabase/functions/admin-update-user/  # Edge Function (opcional): admin edita email/contraseña
@@ -199,7 +200,8 @@ correrlos más de una vez.
    del paso 3, así convierte también las empresas de ejemplo al formato con
    categorías; si cargás el ejemplo después, volvé a correr 012).
    Después, pegá y ejecutá [`sql/013_solicitudes.sql`](sql/013_solicitudes.sql)
-   (solicitudes y carga rápida de ofertas/necesidades).
+   (solicitudes y carga rápida de ofertas/necesidades) y
+   [`sql/014_blog.sql`](sql/014_blog.sql) (blog).
 5. Registrate normalmente desde la app (pestaña "Registrarse"). La
    **primera** cuenta de un proyecto nuevo no es admin automáticamente: hay
    que asignarle el rol manualmente (paso siguiente). A partir de ahí, ese
@@ -281,6 +283,32 @@ Qué agrega:
   coincidencia automática en esa categoría, la solicitud cuenta como
   aceptación de esa conexión (no se duplica). El webmaster ve las
   solicitudes y si hubo contacto, nunca el contenido.
+
+### Actualización: blog (sql/014)
+
+1. En el SQL Editor, pegá y ejecutá [`sql/014_blog.sql`](sql/014_blog.sql).
+   Solo agrega (tablas `blog_*`, sus funciones y el bucket privado `blog`
+   de Storage): no cambia ni borra nada existente y se puede correr más de
+   una vez.
+2. Publicá el sitio (merge a `main`). Si el sitio llegara antes que la base,
+   la pestaña Blog avisa que falta correr 014.
+
+Qué agrega (pestaña **Blog**, solo para usuarios con cuenta):
+- Publicar en nombre de una empresa propia o a título personal: texto
+  (los links quedan clickeables), hasta 4 fotos (JPG/PNG/WebP/GIF, 5 MB
+  c/u) **o** un video (MP4/WebM hasta 50 MB, o un link de YouTube/Vimeo que
+  se reproduce al tocarlo). Los archivos quedan en un bucket privado y se
+  muestran con links temporales.
+- Me gusta (y ver quién), comentarios con un nivel de respuestas, me gusta
+  en comentarios; cada uno edita o borra lo suyo.
+- Se publica al instante y se modera después: cualquiera puede
+  **denunciar**; solo el webmaster oculta, vuelve a mostrar o borra
+  (Webmaster → Blog, o desde el mismo feed). La bitácora registra las
+  acciones, nunca el texto publicado.
+- Límites anti-spam: 10 publicaciones y 30 comentarios cada 10 minutos.
+- Si se elimina una cuenta, sus publicaciones se borran pero los archivos
+  ya subidos quedan en Storage (se pueden limpiar desde el panel de
+  Supabase, carpeta con el id del usuario).
 
 ### Confirmación de email
 

@@ -10,6 +10,7 @@ import * as Conexiones from './conexiones.ts';
 import * as Webmaster from './webmaster.ts';
 import * as Solicitudes from './solicitudes.ts';
 import { initSolicitudesUI } from './ui-solicitudes.ts';
+import { initBlogUI, resetBlogUI } from './ui-blog.ts';
 import { calcularSugerencias, etiquetaItem } from './matching.ts';
 import { setContext } from './contexto.ts';
 import { contarMisPendientes, initConexionesUI, puedeVerRed, resetConexionesUI } from './ui-conexiones.ts';
@@ -265,6 +266,7 @@ function wireStaticEvents(): void {
   });
   initConexionesUI();
   initSolicitudesUI();
+  initBlogUI();
   renderQuickTagButtons();
   renderSectorDatalist();
 }
@@ -415,6 +417,7 @@ function showAuthScreen(): void {
   resetConexionesUI();
   resetWebmasterUI();
   resetGuia();
+  resetBlogUI();
   conexiones = [];
   solicitudes = [];
 }
@@ -554,12 +557,13 @@ window.showScreen = function (name) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   const el = document.getElementById('screen-' + name);
   if (el) el.classList.add('active');
-  const names = ['directorio', 'graduados', 'vinculacion', 'mapa', 'mis-empresas', 'registrar', 'admin', 'webmaster'];
+  const names = ['directorio', 'graduados', 'vinculacion', 'blog', 'mapa', 'mis-empresas', 'registrar', 'admin', 'webmaster'];
   const idx = names.indexOf(name);
   if (idx >= 0) { const btns = document.querySelectorAll('.tab-btn'); if (btns[idx]) btns[idx].classList.add('active'); }
   if (name === 'directorio') window.renderDir();
   if (name === 'graduados') window.renderGraduados();
   if (name === 'vinculacion') window.renderVin();
+  if (name === 'blog') window.renderBlog();
   if (name === 'mapa') window.renderMapa().catch(e => console.error('No se pudo cargar el mapa:', e));
   if (name === 'mis-empresas') window.renderMias();
   if (name === 'registrar') { if (!editingId) prefillUser(); renderItemEditors(); }

@@ -104,6 +104,7 @@
       <button class="tab-btn active" onclick="showScreen('directorio')"><i class="ti ti-building"></i> Empresas</button>
       <button class="tab-btn" onclick="showScreen('graduados')"><i class="ti ti-users"></i> Graduados</button>
       <button class="tab-btn" onclick="showScreen('vinculacion')"><i class="ti ti-arrows-exchange"></i> Vinculación</button>
+      <button class="tab-btn" onclick="showScreen('blog')"><i class="ti ti-news"></i> Blog</button>
       <button class="tab-btn" onclick="showScreen('mapa')"><i class="ti ti-map-2"></i> Mapa</button>
       <button class="tab-btn" onclick="showScreen('mis-empresas')"><i class="ti ti-star"></i> Mis empresas</button>
       <button class="tab-btn" onclick="showScreen('registrar')"><i class="ti ti-plus"></i> Agregar</button>
@@ -195,6 +196,28 @@
         <button class="chip" onclick="setVinFilter(this,'categoria')">Misma categoría</button>
       </div>
       <div class="vin-list" id="vin-list"></div>
+    </div>
+
+    <!-- BLOG -->
+    <div class="screen" id="screen-blog">
+      <div class="blog-col">
+        <div class="bp-card bp-composer">
+          <div class="bp-composer-como"><label class="form-label" for="bn-como">Publicar como</label>
+            <select class="form-select" id="bn-como"></select></div>
+          <div id="bn-composer"></div>
+          <div class="action-row"><button class="btn-prim" id="bn-publicar" onclick="blogPublicar()"><i class="ti ti-send"></i> Publicar</button></div>
+        </div>
+        <div class="section-header">
+          <div class="section-title">Publicaciones de la red</div>
+          <span class="count-pill" id="blog-count">0</span>
+        </div>
+        <div class="filters" id="blog-filtros">
+          <button class="chip active" onclick="blogFiltro(this,'todos')">Todas</button>
+          <button class="chip" onclick="blogFiltro(this,'mios')">Mis publicaciones</button>
+        </div>
+        <div id="blog-lista"></div>
+        <div class="action-row"><button class="btn-out hidden" id="blog-mas" onclick="blogMas()">Ver más publicaciones</button></div>
+      </div>
     </div>
 
     <!-- MAPA -->
@@ -383,6 +406,7 @@
         <button class="chip active" onclick="wmSeccion(this,'bitacora')"><i class="ti ti-list-details"></i> Bitácora</button>
         <button class="chip" onclick="wmSeccion(this,'conexiones')"><i class="ti ti-arrows-exchange"></i> Conexiones</button>
         <button class="chip" onclick="wmSeccion(this,'solicitudes')"><i class="ti ti-send"></i> Solicitudes</button>
+        <button class="chip" onclick="wmSeccion(this,'blog')"><i class="ti ti-news"></i> Blog</button>
         <button class="chip" onclick="wmSeccion(this,'categorias')"><i class="ti ti-category"></i> Categorías</button>
       </div>
 
@@ -445,6 +469,24 @@
           <table class="admin-table wm-table">
             <thead><tr><th>Fecha</th><th>De</th><th>Para</th><th>Pedido</th><th>Estado</th><th>Contacto</th></tr></thead>
             <tbody id="wm-sol-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="wm-sec-blog" class="hidden">
+        <p class="hint-text">Denuncias de los usuarios sobre publicaciones y comentarios del blog. <strong>Ocultar</strong> lo saca de la vista de todos (su autor ve el motivo) y se puede revertir; <strong>Borrar</strong> es definitivo. Las denuncias quedan cerradas al resolverlas.</p>
+        <div class="section-header"><div class="section-title">Denuncias abiertas</div><span class="count-pill" id="wm-blog-count">0</span></div>
+        <div class="table-wrap">
+          <table class="admin-table wm-table">
+            <thead><tr><th>Fecha</th><th>Denunció</th><th>Contenido</th><th>Motivo</th><th>Acciones</th></tr></thead>
+            <tbody id="wm-blog-denuncias"></tbody>
+          </table>
+        </div>
+        <div class="section-header mt-1"><div class="section-title">Contenido oculto</div></div>
+        <div class="table-wrap">
+          <table class="admin-table wm-table">
+            <thead><tr><th>Ocultado</th><th>Contenido</th><th>Motivo</th><th>Acciones</th></tr></thead>
+            <tbody id="wm-blog-ocultos"></tbody>
           </table>
         </div>
       </div>
@@ -643,6 +685,53 @@
       <button class="btn-out" onclick="cerrarSolicitud()">Cerrar</button>
     </div>
     <div class="form-msg" id="sol-f-res"></div>
+  </div>
+</div>
+
+<!-- MODALES DEL BLOG -->
+<div class="modal-overlay" id="modal-blog-editar">
+  <div class="modal">
+    <div class="modal-header">
+      <div><h2>Editar publicación</h2><div class="muted-sm" id="be-como"></div></div>
+      <button class="modal-close" onclick="blogCerrarEdicion()" aria-label="Cerrar"><i class="ti ti-x"></i></button>
+    </div>
+    <div id="be-composer"></div>
+    <div class="action-row">
+      <button class="btn-prim" id="be-guardar" onclick="blogGuardarEdicion()"><i class="ti ti-check"></i> Guardar cambios</button>
+      <button class="btn-out" onclick="blogCerrarEdicion()">Cancelar</button>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" id="modal-blog-likes">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2 id="blog-likes-titulo">Les gusta</h2>
+      <button class="modal-close" onclick="blogCerrarModal('modal-blog-likes')" aria-label="Cerrar"><i class="ti ti-x"></i></button>
+    </div>
+    <ul class="blog-likes-lista" id="blog-likes-lista"></ul>
+  </div>
+</div>
+<div class="modal-overlay" id="modal-blog-imagen">
+  <div class="modal modal-imagen">
+    <div class="modal-header"><span></span>
+      <button class="modal-close" onclick="blogCerrarModal('modal-blog-imagen')" aria-label="Cerrar"><i class="ti ti-x"></i></button>
+    </div>
+    <img id="blog-imagen-grande" alt="Imagen de la publicación">
+  </div>
+</div>
+<div class="modal-overlay" id="modal-blog-motivo">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2 id="blog-motivo-titulo">Denunciar</h2>
+      <button class="modal-close" onclick="blogCerrarModal('modal-blog-motivo')" aria-label="Cerrar"><i class="ti ti-x"></i></button>
+    </div>
+    <p class="hint-text" id="blog-motivo-ayuda"></p>
+    <textarea class="form-input form-textarea" id="blog-motivo-texto" maxlength="500" aria-label="Motivo"></textarea>
+    <div class="action-row">
+      <button class="btn-prim" id="blog-motivo-ok" onclick="blogMotivoConfirmar()">Confirmar</button>
+      <button class="btn-out" onclick="blogCerrarModal('modal-blog-motivo')">Cancelar</button>
+    </div>
+    <div class="form-msg" id="blog-motivo-msg"></div>
   </div>
 </div>
 

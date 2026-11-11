@@ -10,6 +10,7 @@ import * as Empresas from './empresas.ts';
 import * as Webmaster from './webmaster.ts';
 import * as Solicitudes from './solicitudes.ts';
 import { fraseSolicitud, nombreDestino, nombreOrigen } from './ui-solicitudes.ts';
+import { renderModeracionBlog } from './ui-blog.ts';
 import { app, fechaHora, nombreUsuario } from './contexto.ts';
 import { estadoNeutral, type EstadoNeutral } from './matching.ts';
 import { esc, friendlyError, normalizeTagKey } from './utils.ts';
@@ -31,7 +32,7 @@ declare global {
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
 
-let seccion: 'bitacora' | 'conexiones' | 'solicitudes' | 'categorias' = 'bitacora';
+let seccion: 'bitacora' | 'conexiones' | 'solicitudes' | 'blog' | 'categorias' = 'bitacora';
 let bitacora: BitacoraRow[] = [];
 let bitacoraFin = false;
 let wmConexiones: ConexionRow[] = [];
@@ -68,6 +69,15 @@ export const ACCIONES: Record<string, string> = {
   solicitud_cancelada: 'Solicitud cancelada',
   solicitud_mensaje: 'Mensaje de solicitud (sin contenido)',
   solicitud_como_conexion: 'Solicitud sobre una coincidencia existente',
+  blog_post_publicado: 'Blog: publicación',
+  blog_post_editado: 'Blog: publicación editada',
+  blog_post_borrado: 'Blog: publicación borrada',
+  blog_comentario: 'Blog: comentario',
+  blog_comentario_editado: 'Blog: comentario editado',
+  blog_comentario_borrado: 'Blog: comentario borrado',
+  blog_denuncia: 'Blog: denuncia',
+  blog_moderacion: 'Blog: moderación',
+  blog_denuncia_descartada: 'Blog: denuncia descartada',
 };
 
 const CAMPOS: Record<string, string> = {
@@ -140,6 +150,18 @@ export function describirEvento(r: BitacoraRow): string {
       }
       return base;
     }
+    case 'blog_post_publicado': {
+      const m = d.video ? ' con video' : Number(d.imagenes) ? ` con ${txt(d.imagenes)} imagen${Number(d.imagenes) !== 1 ? 'es' : ''}` : '';
+      return `Publicó como ${txt(d.como)}${m} (#${txt(r.entidad_id)})`;
+    }
+    case 'blog_post_editado': return `Editó la publicación #${txt(r.entidad_id)} de ${txt(d.como)}`;
+    case 'blog_post_borrado': return `${d.moderacion ? 'Borró por moderación' : 'Borró'} la publicación #${txt(r.entidad_id)} de ${txt(d.como)}`;
+    case 'blog_comentario': return `${d.respuesta ? 'Respondió un comentario' : 'Comentó'} en la publicación #${txt(r.entidad_id)}`;
+    case 'blog_comentario_editado': return `Editó un comentario en la publicación #${txt(r.entidad_id)}`;
+    case 'blog_comentario_borrado': return `${d.moderacion ? 'Borró por moderación' : 'Borró'} un comentario de ${txt(d.autor)} en la publicación #${txt(r.entidad_id)}`;
+    case 'blog_denuncia': return `Denunció ${d.tipo === 'post' ? 'la publicación' : 'un comentario'} de ${txt(d.autor)} (publicación #${txt(r.entidad_id)})`;
+    case 'blog_moderacion': return `${d.accion === 'ocultar' ? 'Ocultó' : 'Volvió a mostrar'} ${d.tipo === 'post' ? 'la publicación' : 'un comentario'} de ${txt(d.autor)} (#${txt(r.entidad_id)})${d.motivo ? ': ' + txt(d.motivo) : ''}`;
+    case 'blog_denuncia_descartada': return `Descartó una denuncia sobre ${d.tipo === 'post' ? 'la publicación' : 'el comentario'} #${txt(d.id)}`;
     default: return '';
   }
 }
@@ -147,14 +169,14 @@ export function describirEvento(r: BitacoraRow): string {
 window.wmSeccion = function (el, s) {
   document.querySelectorAll('#wm-secciones .chip').forEach(c => c.classList.remove('active'));
   el.classList.add('active');
-  seccion = s === 'conexiones' ? 'conexiones' : s === 'solicitudes' ? 'solicitudes' : s === 'categorias' ? 'categorias' : 'bitacora';
+  seccion = s === 'conexiones' ? 'conexiones' : s === 'solicitudes' ? 'solicitudes' : s === 'blog' ? 'blog' : s === 'categorias' ? 'categorias' : 'bitacora';
   window.renderWebmaster();
 };
 
 window.renderWebmaster = function () {
   const c = app();
   if (!c.currentProfile?.is_webmaster) return;
-  (['bitacora', 'conexiones', 'solicitudes', 'categorias'] as const).forEach(s => $('wm-sec-' + s).classList.toggle('hidden', s !== seccion));
+  (['bitacora', 'conexiones', 'solicitudes', 'blog', 'categorias'] as const).forEach(s => $('wm-sec-' + s).classList.toggle('hidden', s !== seccion));
   if (seccion === 'bitacora') {
     llenarFiltrosBitacora();
     if (!bitacora.length && !bitacoraFin) void window.wmBuscarBitacora();
@@ -163,6 +185,8 @@ window.renderWebmaster = function () {
     void cargarConexiones();
   } else if (seccion === 'solicitudes') {
     void cargarSolicitudes();
+  } else if (seccion === 'blog') {
+    void renderModeracionBlog();
   } else {
     renderCategorias();
   }
