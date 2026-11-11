@@ -94,6 +94,13 @@ const tags: Record<TagType, string[]> = { instalaciones: [], 'needs-covered': []
 const tagCls: Record<TagType, string> = { instalaciones: 'rt-i', 'needs-covered': 'rt-nc' };
 let activeFilter = 'todos';
 let currentProfile: Profile | null = null;
+// Link de "restablecer contraseña" del correo: se detecta en la URL apenas
+// carga el script, ANTES de que Supabase la procese y la limpie. Supabase
+// avisa PASSWORD_RECOVERY recién un instante después de dar la sesión por
+// válida, y para entonces enterApp() ya había arrancado y terminaba tapando
+// el formulario de nueva contraseña (el usuario entraba directo sin poder
+// cambiarla). Mientras esto sea true, enterApp() no muestra la app.
+let recoveryInProgress = /(^|[#&])type=recovery(&|$)/.test(window.location.hash);
 let orgs: Empresa[] = [];
 let profiles: Profile[] = [];
 let categorias: Categoria[] = [];
@@ -185,7 +192,6 @@ async function init(): Promise<void> {
   // app (o viendo el login si no había sesión) en vez del formulario
   // para definir la contraseña nueva: "nunca dejaba cambiar la
   // contraseña". Ahora la suscripción se hace antes de tocar la sesión.
-  let recoveryInProgress = false;
   const showPasswordRecoveryForm = () => {
     recoveryInProgress = true;
     $('auth-wrap').style.display = 'flex';
@@ -221,8 +227,18 @@ async function init(): Promise<void> {
     }
   }).catch(e => console.error('No se pudo suscribir a cambios de sesión:', e));
 
+  if (recoveryInProgress) showPasswordRecoveryForm();
   const session = await Auth.getSession();
-  if (recoveryInProgress) return; // el listener de arriba ya mostró el form de reset
+  if (recoveryInProgress) {
+    if (session) return; // formulario de nueva contraseña a la vista
+    // El link venía vencido o ya usado: sin sesión no se puede cambiar la
+    // contraseña, así que volvemos al login con un aviso.
+    recoveryInProgress = false;
+    showAuthScreen();
+    window.authTab('login');
+    showAuthMsg('l-msg', 'El link para restablecer la contraseña venció o ya fue usado. Pedí uno nuevo con "¿Olvidaste tu contraseña?".', 'err');
+    return;
+  }
   if (session) {
     await enterApp();
   } else {
@@ -362,6 +378,7 @@ window.doResetPassword = async function () {
   setBusy('rp-btn', true);
   try {
     await Auth.updatePassword(p1);
+    recoveryInProgress = false; // ya se puede entrar a la app
     showAuthMsg('rp-msg', '✓ Contraseña actualizada. Ya podés ingresar con ella.', 'ok');
     setTimeout(() => { enterApp().catch(e => showAuthMsg('l-msg', friendlyError(e), 'err')); }, 1200);
   } catch (e) {
@@ -406,6 +423,7 @@ function enterApp(): Promise<void> {
 }
 
 async function enterAppImpl(): Promise<void> {
+  if (recoveryInProgress) return; // no tapar el formulario de nueva contraseña
   try {
     currentProfile = await Auth.getCurrentProfile();
   } catch (e) {
@@ -413,6 +431,7 @@ async function enterAppImpl(): Promise<void> {
     return;
   }
   if (!currentProfile) return;
+  if (recoveryInProgress) { currentProfile = null; return; }
   $('auth-wrap').style.display = 'none';
   $('main-app').style.display = 'block';
   $('user-name-pill').textContent = currentProfile.nombre || currentProfile.email || '—';
@@ -430,6 +449,7 @@ async function enterAppImpl(): Promise<void> {
     showAuthMsg('l-msg', friendlyError(e), 'err');
     return;
   }
+  if (recoveryInProgress) { currentProfile = null; showAuthScreen(); return; } // llegó el link de reset mientras cargaba
   window.showScreen('directorio');
   iniciarGuia();
 }
