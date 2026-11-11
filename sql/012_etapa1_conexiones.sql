@@ -317,7 +317,8 @@ begin
   create temporary table if not exists tmp_items_nuevos (
     tipo text, categoria_id bigint, subcategoria text
   ) on commit drop;
-  delete from tmp_items_nuevos;
+  -- "where true": Supabase tiene pg-safeupdate, que rechaza DELETE sin WHERE.
+  delete from tmp_items_nuevos where true;
 
   for v_item in select * from jsonb_array_elements(p_items) loop
     v_tipo := v_item->>'tipo';
