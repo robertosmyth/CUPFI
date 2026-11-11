@@ -5,7 +5,7 @@
 import { getSupabase } from './supabaseClient.ts';
 import type {
   Categoria, CategoriaRow, Database, Empresa, EmpresaFields, EmpresaInput, EmpresaItem, EmpresaItemRow,
-  EmpresaRow, EmpresaUsuarioRow,
+  EmpresaRow, EmpresaUsuarioRow, ItemTipo,
 } from './types.ts';
 
 type EmpresaInsert = Database['public']['Tables']['empresas']['Insert'];
@@ -130,7 +130,7 @@ export async function desasignarUsuario(empresaId: number, userId: string): Prom
 // OFERTAS / NECESIDADES (categoría + subcategoría, tabla empresa_items)
 // ══════════════════════════════════════════════
 function itemFromDb(r: EmpresaItemRow): EmpresaItem {
-  return { tipo: r.tipo, categoriaId: r.categoria_id, subcategoria: r.subcategoria || '', revisar: !!r.revisar };
+  return { id: r.id, tipo: r.tipo, categoriaId: r.categoria_id, subcategoria: r.subcategoria || '', revisar: !!r.revisar };
 }
 
 // Todos los ítems de todas las empresas, agrupados por empresa.
@@ -156,6 +156,24 @@ export async function guardarItems(empresaId: number, items: EmpresaItem[]): Pro
   });
   if (error) throw error;
   return (data || []).map(itemFromDb);
+}
+
+// Carga rápida desde el detalle de la empresa: agrega o quita UN ítem
+// (sql/013: empresa_item_agregar / empresa_item_quitar). A diferencia de
+// guardarItems no toca el resto de los ítems ni su marca "revisar".
+export async function agregarItem(empresaId: number, tipo: ItemTipo, categoriaId: number, subcategoria: string): Promise<EmpresaItem> {
+  const supabase = await getSupabase();
+  const { data, error } = await supabase.rpc('empresa_item_agregar', {
+    p_empresa: empresaId, p_tipo: tipo, p_categoria: categoriaId, p_subcategoria: subcategoria,
+  });
+  if (error) throw error;
+  return itemFromDb(data as EmpresaItemRow);
+}
+
+export async function quitarItem(itemId: number): Promise<void> {
+  const supabase = await getSupabase();
+  const { error } = await supabase.rpc('empresa_item_quitar', { p_item: itemId });
+  if (error) throw error;
 }
 
 // ══════════════════════════════════════════════

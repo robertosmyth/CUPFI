@@ -8,10 +8,12 @@
 import * as Conexiones from './conexiones.ts';
 import * as Empresas from './empresas.ts';
 import * as Webmaster from './webmaster.ts';
+import * as Solicitudes from './solicitudes.ts';
+import { fraseSolicitud, nombreDestino, nombreOrigen } from './ui-solicitudes.ts';
 import { app, fechaHora, nombreUsuario } from './contexto.ts';
 import { estadoNeutral, type EstadoNeutral } from './matching.ts';
 import { esc, friendlyError, normalizeTagKey } from './utils.ts';
-import type { BitacoraRow, ConexionRow, ContactoResumenRow } from './types.ts';
+import type { BitacoraRow, ConexionRow, ContactoResumenRow, SolicitudResumenRow, SolicitudRow } from './types.ts';
 
 declare global {
   interface Window {
@@ -20,6 +22,7 @@ declare global {
     wmBuscarBitacora(): Promise<void>;
     wmMasBitacora(): Promise<void>;
     wmRenderConexiones(): void;
+    wmRenderSolicitudes(): void;
     wmCrearCategoria(): Promise<void>;
     wmGuardarCategoria(id: number): Promise<void>;
     wmBorrarCategoria(id: number): Promise<void>;
@@ -28,11 +31,13 @@ declare global {
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
 
-let seccion: 'bitacora' | 'conexiones' | 'categorias' = 'bitacora';
+let seccion: 'bitacora' | 'conexiones' | 'solicitudes' | 'categorias' = 'bitacora';
 let bitacora: BitacoraRow[] = [];
 let bitacoraFin = false;
 let wmConexiones: ConexionRow[] = [];
 let wmContacto: ContactoResumenRow[] = [];
+let wmSolicitudes: SolicitudRow[] = [];
+let wmSolContacto: SolicitudResumenRow[] = [];
 
 // Acciones registradas en la bitácora (ver sql/012), con su texto.
 export const ACCIONES: Record<string, string> = {
@@ -57,6 +62,12 @@ export const ACCIONES: Record<string, string> = {
   conexion_rechazada: 'Conexión rechazada',
   conexion_match: 'Match',
   mensaje_enviado: 'Mensaje enviado (sin contenido)',
+  solicitud_enviada: 'Solicitud enviada',
+  solicitud_aceptada: 'Solicitud aceptada',
+  solicitud_rechazada: 'Solicitud rechazada',
+  solicitud_cancelada: 'Solicitud cancelada',
+  solicitud_mensaje: 'Mensaje de solicitud (sin contenido)',
+  solicitud_como_conexion: 'Solicitud sobre una coincidencia existente',
 };
 
 const CAMPOS: Record<string, string> = {
@@ -109,6 +120,26 @@ export function describirEvento(r: BitacoraRow): string {
     case 'conexion_rechazada': return `${conexion()} · como ${txt(d.como_empresa)}`;
     case 'conexion_match': return conexion();
     case 'mensaje_enviado': return `${conexion()} · escribió ${txt(d.como_empresa)}`;
+    case 'solicitud_enviada':
+    case 'solicitud_aceptada':
+    case 'solicitud_rechazada':
+    case 'solicitud_cancelada':
+    case 'solicitud_mensaje':
+    case 'solicitud_como_conexion': {
+      const que = d.subcategoria ? `${txt(d.categoria)} › ${txt(d.subcategoria)}` : txt(d.categoria);
+      const base = d.tipo === 'ofrecer'
+        ? `${txt(d.origen)} ofrece ${que} a ${txt(d.destino)}`
+        : `${txt(d.origen)} quiere conseguir ${que} de ${txt(d.destino)}`;
+      if (r.accion === 'solicitud_mensaje') return `${base} · escribió ${d.lado === 'destino' ? txt(d.destino) : txt(d.origen)}`;
+      if (r.accion === 'solicitud_como_conexion') {
+        const res: Record<string, string> = {
+          conexion_aceptada: 'contó como aceptación de la conexión', conexion_match: 'generó match',
+          conexion_ya_aceptada: 'la conexión ya estaba aceptada', conexion_en_match: 'ya estaban en match',
+        };
+        return `${base} · ${res[txt(d.resultado)] || txt(d.resultado)}`;
+      }
+      return base;
+    }
     default: return '';
   }
 }
@@ -116,20 +147,22 @@ export function describirEvento(r: BitacoraRow): string {
 window.wmSeccion = function (el, s) {
   document.querySelectorAll('#wm-secciones .chip').forEach(c => c.classList.remove('active'));
   el.classList.add('active');
-  seccion = s === 'conexiones' ? 'conexiones' : s === 'categorias' ? 'categorias' : 'bitacora';
+  seccion = s === 'conexiones' ? 'conexiones' : s === 'solicitudes' ? 'solicitudes' : s === 'categorias' ? 'categorias' : 'bitacora';
   window.renderWebmaster();
 };
 
 window.renderWebmaster = function () {
   const c = app();
   if (!c.currentProfile?.is_webmaster) return;
-  (['bitacora', 'conexiones', 'categorias'] as const).forEach(s => $('wm-sec-' + s).classList.toggle('hidden', s !== seccion));
+  (['bitacora', 'conexiones', 'solicitudes', 'categorias'] as const).forEach(s => $('wm-sec-' + s).classList.toggle('hidden', s !== seccion));
   if (seccion === 'bitacora') {
     llenarFiltrosBitacora();
     if (!bitacora.length && !bitacoraFin) void window.wmBuscarBitacora();
     else renderBitacora();
   } else if (seccion === 'conexiones') {
     void cargarConexiones();
+  } else if (seccion === 'solicitudes') {
+    void cargarSolicitudes();
   } else {
     renderCategorias();
   }
@@ -264,6 +297,68 @@ window.wmRenderConexiones = function () {
     : '<tr><td colspan="7" class="empty">No hay conexiones para ese criterio.</td></tr>';
 };
 
+// ─── Solicitudes ───────────────────────────────────────────────────
+// Hubo contacto = alguna de las partes escribió después de aceptada (el
+// mensaje inicial no cuenta).
+function huboContacto(s: SolicitudRow, cont: SolicitudResumenRow[]): boolean {
+  return !!s.respondida_at && cont.some(x => new Date(x.ultimo_mensaje).getTime() > new Date(s.respondida_at!).getTime());
+}
+
+const SOL_ESTADO_TXT: Record<SolicitudRow['estado'], string> = {
+  pendiente: 'Pendiente', aceptada: 'Aceptada', rechazada: 'Rechazada', cancelada: 'Cancelada',
+};
+
+async function cargarSolicitudes(): Promise<void> {
+  $('wm-sol-body').innerHTML = '<tr><td colspan="6" class="empty">Cargando…</td></tr>';
+  try {
+    [wmSolicitudes, wmSolContacto] = await Promise.all([Solicitudes.listSolicitudes(), Solicitudes.resumenWebmaster()]);
+    window.wmRenderSolicitudes();
+  } catch (e) {
+    $('wm-sol-body').innerHTML = `<tr><td colspan="6" class="empty">${esc(friendlyError(e))}</td></tr>`;
+  }
+}
+
+window.wmRenderSolicitudes = function () {
+  const c = app();
+  const fEstado = $<HTMLSelectElement>('wm-s-estado').value;
+  const q = ($<HTMLInputElement>('wm-s-buscar').value || '').toLowerCase();
+  const filas = wmSolicitudes.filter(s => {
+    const cont = wmSolContacto.filter(x => x.solicitud_id === s.id);
+    if (fEstado === 'aceptada_sin_contacto') {
+      if (s.estado !== 'aceptada' || huboContacto(s, cont)) return false;
+    } else if (fEstado && s.estado !== fEstado) return false;
+    if (!q) return true;
+    return [nombreOrigen(s), nombreDestino(s), c.categoriaById(s.categoria_id)?.nombre || '', s.subcategoria].join(' ').toLowerCase().includes(q);
+  });
+  $('wm-sol-count').textContent = String(filas.length);
+  $('wm-sol-body').innerHTML = filas.length
+    ? filas.map(s => {
+        const cont = wmSolContacto.filter(x => x.solicitud_id === s.id);
+        const n = (lado: 'origen' | 'destino') => cont.find(x => x.lado === lado)?.cantidad || 0;
+        let contacto = '<span class="muted-sm">—</span>';
+        if (s.estado === 'aceptada') {
+          contacto = huboContacto(s, cont)
+            ? `<span class="wm-contacto wm-contacto--si">Hubo contacto</span>
+               <div class="muted-sm">${esc(nombreOrigen(s))}: ${n('origen')} msj · ${esc(nombreDestino(s))}: ${n('destino')} msj</div>
+               <div class="muted-sm">Último: ${esc(fechaHora(cont.map(x => x.ultimo_mensaje).sort().slice(-1)[0]))}</div>`
+            : '<span class="wm-contacto wm-contacto--no">Sin contacto</span>';
+        } else if (n('origen')) {
+          contacto = '<span class="muted-sm">Con mensaje inicial</span>';
+        }
+        const badge = s.estado === 'aceptada' ? 'match' : s.estado === 'pendiente' ? 'esperando_otra' : 'rechazada';
+        return `<tr>
+          <td class="td-sm nowrap">${esc(fechaHora(s.created_at))}</td>
+          <td class="td-sm"><strong>${esc(nombreOrigen(s))}</strong><div class="muted-sm">${esc(nombreUsuario(s.enviada_por))}</div></td>
+          <td class="td-sm"><strong>${esc(nombreDestino(s))}</strong></td>
+          <td class="td-sm">${fraseSolicitud(s)}</td>
+          <td class="td-sm"><span class="cx-badge cx-badge--${badge}">${SOL_ESTADO_TXT[s.estado]}</span>
+            ${s.respondida_at ? `<div class="muted-sm">${esc(fechaHora(s.respondida_at))} · ${esc(nombreUsuario(s.respondida_por))}</div>` : ''}</td>
+          <td class="td-sm">${contacto}</td>
+        </tr>`;
+      }).join('')
+    : '<tr><td colspan="6" class="empty">No hay solicitudes para ese criterio.</td></tr>';
+};
+
 // ─── Categorías ────────────────────────────────────────────────────
 function parseSubs(raw: string): string[] {
   const vistos = new Set<string>();
@@ -363,6 +458,8 @@ export function resetWebmasterUI(): void {
   bitacoraFin = false;
   wmConexiones = [];
   wmContacto = [];
+  wmSolicitudes = [];
+  wmSolContacto = [];
   seccion = 'bitacora';
   document.querySelectorAll('#wm-secciones .chip').forEach((c, i) => c.classList.toggle('active', i === 0));
 }

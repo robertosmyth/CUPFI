@@ -71,6 +71,23 @@ interface ErrorLike {
 // Errores que lanzan a propósito las funciones de sql/012 (raise exception
 // 'CODIGO'), con el texto que ve el usuario.
 const MENSAJES_012: Array<[string, string]> = [
+  // sql/013 (solicitudes y carga rápida). Van primero: algunos contienen
+  // códigos más cortos de 012 (por ejemplo SOLICITUD_YA_ACEPTADA contiene
+  // YA_ACEPTADA) y gana el primero que coincide.
+  ['SOLICITUD_YA_ACEPTADA', 'Esa solicitud ya fue aceptada: seguí la conversación desde su chat.'],
+  ['SOLICITUD_YA_PENDIENTE', 'Ya enviaste esa misma solicitud y todavía espera respuesta.'],
+  ['SOLICITUD_RECHAZADA_ANTES', 'Esa empresa ya rechazó esta misma solicitud; no se puede volver a enviar.'],
+  ['SOLICITUD_YA_RESPONDIDA', 'Esta solicitud ya fue respondida o cancelada.'],
+  ['SOLICITUD_SIN_ITEM', 'Esa empresa ya no tiene cargado ese servicio o necesidad. Recargá la página.'],
+  ['SOLICITUD_INEXISTENTE', 'La solicitud ya no existe. Recargá la página.'],
+  ['SOLICITUD_TIPO_INVALIDO', 'Tipo de solicitud no válido.'],
+  ['DEMASIADAS_SOLICITUDES', 'Tenés demasiadas solicitudes esperando respuesta (máximo 30). Esperá respuestas o cancelá alguna.'],
+  ['EMPRESA_SIN_USUARIOS', 'Esa empresa todavía no tiene usuarios en la red que puedan responder. Contactala por sus datos de contacto.'],
+  ['ITEM_REQUIERE_EMPRESA', 'Para sumar el ítem elegí una de tus empresas como remitente.'],
+  ['ITEM_YA_EXISTE', 'Ese ítem ya está cargado en la empresa.'],
+  ['ITEM_INEXISTENTE', 'Ese ítem ya no existe. Recargá la página.'],
+  ['CHAT_SIN_ACEPTAR', 'El chat se habilita cuando la empresa acepta la solicitud.'],
+  ['EMPRESA_INEXISTENTE', 'La empresa ya no existe. Recargá la página.'],
   ['SIN_PERMISO_EMPRESA', 'No tenés permiso para actuar en nombre de esa empresa.'],
   ['MISMO_TITULAR', 'No se pueden conectar dos empresas que comparten usuarios.'],
   ['CONEXION_SIN_COINCIDENCIA', 'Esta conexión ya no tiene coincidencias actuales: alguna de las empresas cambió sus ofertas o necesidades.'],
@@ -107,6 +124,11 @@ export function friendlyError(error: unknown): string {
   // Códigos propios de sql/012_etapa1_conexiones.sql
   const propio = MENSAJES_012.find(([code]) => msg.includes(code));
   if (propio) return propio[1];
+  // Falta correr sql/013 en Supabase.
+  if (/(solicitud|empresa_item_agregar|empresa_item_quitar)/i.test(msg) &&
+      (/does not exist|Could not find|schema cache/i.test(msg) || e.code === 'PGRST205' || e.code === 'PGRST202' || e.code === '42P01')) {
+    return 'La base de datos todavía no tiene la actualización de solicitudes (falta correr sql/013_solicitudes.sql en Supabase).';
+  }
   // Falta correr sql/012 en Supabase (tabla o función inexistente).
   if (/(empresa_items|conexiones|categorias|mensajes|bitacora|guardar_items_empresa|conexion_responder)/i.test(msg) &&
       (/does not exist|Could not find|schema cache/i.test(msg) || e.code === 'PGRST205' || e.code === 'PGRST202' || e.code === '42P01')) {

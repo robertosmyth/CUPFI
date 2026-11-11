@@ -8,13 +8,15 @@ import * as Auth from './auth.ts';
 import * as Empresas from './empresas.ts';
 import * as Conexiones from './conexiones.ts';
 import * as Webmaster from './webmaster.ts';
+import * as Solicitudes from './solicitudes.ts';
+import { initSolicitudesUI } from './ui-solicitudes.ts';
 import { calcularSugerencias, etiquetaItem } from './matching.ts';
 import { setContext } from './contexto.ts';
 import { contarMisPendientes, initConexionesUI, puedeVerRed, resetConexionesUI } from './ui-conexiones.ts';
 import { resetWebmasterUI } from './ui-webmaster.ts';
 import { iniciarGuia, resetGuia } from './ui-guia.ts';
 import { esc, ini, normCuit, isValidCuit, isValidEmail, isValidUrl, buildAddress, friendlyError, normalizeTagKey } from './utils.ts';
-import type { Categoria, ConexionRow, Empresa, EmpresaItem, EmpresaUsuarioRow, ItemTipo, Profile } from './types.ts';
+import type { Categoria, ConexionRow, Empresa, EmpresaItem, EmpresaUsuarioRow, ItemTipo, Profile, SolicitudRow } from './types.ts';
 
 // Handlers expuestos a los `onclick`/`onchange`/`onkeydown` inline del HTML
 // (ver index.html). Se mantiene ese patrón tal cual estaba en JS: es un
@@ -69,6 +71,9 @@ declare global {
     cambiarDuenoEmpresa(): Promise<void>;
     agregarUsuarioAEmpresa(): Promise<void>;
     quitarUsuarioDeEmpresa(empresaId: number, userId: string): Promise<void>;
+    detItemCategoria(tipo: ItemTipo): void;
+    detItemAgregar(empresaId: number, tipo: ItemTipo): Promise<void>;
+    detItemQuitar(empresaId: number, itemId: number): Promise<void>;
   }
 }
 
@@ -105,6 +110,7 @@ let orgs: Empresa[] = [];
 let profiles: Profile[] = [];
 let categorias: Categoria[] = [];
 let conexiones: ConexionRow[] = []; // las visibles para el usuario (RLS)
+let solicitudes: SolicitudRow[] = []; // las visibles para el usuario (RLS, sql/013)
 let formItems: EmpresaItem[] = [];  // ofertas/necesidades del formulario de empresa
 let asociaciones: EmpresaUsuarioRow[] = []; // filas de empresa_usuarios (ver sql/historial/009)
 let editingId: number | null = null;
@@ -153,6 +159,7 @@ setContext({
   get profiles() { return profiles; },
   get categorias() { return categorias; },
   get conexiones() { return conexiones; },
+  get solicitudes() { return solicitudes; },
   get currentProfile() { return currentProfile; },
   misEmpresas: () => new Set(currentProfile ? orgs.filter(o => esUsuarioDeEmpresa(o, currentProfile!.id)).map(o => o.id) : []),
   refresh: () => refreshData(),
@@ -257,6 +264,7 @@ function wireStaticEvents(): void {
     if (e.target === this) window.closeModal('modal-perfil');
   });
   initConexionesUI();
+  initSolicitudesUI();
   renderQuickTagButtons();
   renderSectorDatalist();
 }
@@ -408,6 +416,7 @@ function showAuthScreen(): void {
   resetWebmasterUI();
   resetGuia();
   conexiones = [];
+  solicitudes = [];
 }
 
 // Al iniciar sesión, enterApp() se dispara dos veces casi juntas: desde
@@ -455,15 +464,18 @@ async function enterAppImpl(): Promise<void> {
 }
 
 async function refreshData(): Promise<void> {
-  const [e, p, a, items, cats, cons] = await Promise.all([
+  const [e, p, a, items, cats, cons, sols] = await Promise.all([
     Empresas.listEmpresas(), Auth.listProfiles(), Empresas.listAsociaciones(),
     Empresas.listItems(), Empresas.listCategorias(), Conexiones.listConexiones(),
+    // Si la base todavía no tiene sql/013, la app sigue andando sin solicitudes.
+    Solicitudes.listSolicitudes().catch(err => { console.warn('Solicitudes no disponibles:', friendlyError(err)); return [] as SolicitudRow[]; }),
   ]);
   orgs = e;
   profiles = p;
   asociaciones = a;
   categorias = cats;
   conexiones = cons;
+  solicitudes = sols;
   orgs.forEach(o => {
     o.usuarios = usuariosDeEmpresa(o);
     o.items = items.get(o.id) || [];
@@ -846,6 +858,8 @@ window.openDetail = function (id) {
     ? calcularSugerencias(orgs, categorias).filter(s => s.necesita.id === o.id)
     : [];
   const mine = currentProfile && (esUsuarioDeEmpresa(o, currentProfile.id) || currentProfile.role === 'admin');
+  // Solicitudes: a empresas de las que no soy usuario, con ítems cargados.
+  const puedeSolicitar = !!currentProfile && !esUsuarioDeEmpresa(o, currentProfile.id) && (o.items || []).some(i => i.id);
   const addr = buildAddress(o);
   const u = getProfileById(o.uid);
   const mapsUrl = addr ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}` : '';
@@ -880,9 +894,9 @@ window.openDetail = function (id) {
       </a>
     </div>` : ''}
 
-    ${itemsDe(o, 'oferta').length ? `<div class="dsec"><div class="dsec-title">Servicios y productos</div><div class="tags">${itemsDe(o, 'oferta').map(t => `<span class="tag tag-offer">${esc(itemLabel(t))}</span>`).join('')}</div></div>` : ''}
+    ${detalleItemsHtml(o, 'oferta', !!mine)}
     ${(o.instalaciones || []).length ? `<div class="dsec"><div class="dsec-title">Instalaciones disponibles</div><div class="tags">${o.instalaciones.map(t => `<span class="tag tag-inst">${esc(t)}</span>`).join('')}</div></div>` : ''}
-    ${itemsDe(o, 'necesidad').length ? `<div class="dsec"><div class="dsec-title">Necesidades sin cubrir</div><div class="tags">${itemsDe(o, 'necesidad').map(t => `<span class="tag tag-need">${esc(itemLabel(t))}</span>`).join('')}</div></div>` : ''}
+    ${detalleItemsHtml(o, 'necesidad', !!mine)}
     ${(o.needsCovered || []).length ? `<div class="dsec"><div class="dsec-title">Necesidades cubiertas con proveedores</div><div class="tags">${o.needsCovered.map(t => `<span class="tag tag-cov">${esc(t)}</span>`).join('')}</div></div>` : ''}
 
     ${mx.length ? `<div class="dsec"><div class="dsec-title">Vinculaciones posibles</div>
@@ -895,11 +909,85 @@ window.openDetail = function (id) {
       </div>`).join('')}
     </div>` : ''}
 
+    ${puedeSolicitar ? `<div class="dsec detail-edit-wrap">
+      <button class="btn-prim" onclick="closeModal('modal-detalle');abrirSolicitud(${o.id})"><i class="ti ti-send"></i> Enviar solicitud a esta empresa</button>
+    </div>` : ''}
+
     ${mine ? `<div class="dsec detail-edit-wrap">
       <button class="btn-edit-inline" onclick="startEdit(${o.id});closeModal('modal-detalle')"><i class="ti ti-pencil"></i> Editar esta empresa</button>
     </div>` : ''}
   `;
   $('modal-detalle').classList.add('open');
+};
+
+// Servicios/productos o necesidades en el detalle. Quien puede editar la
+// empresa los agrega o quita ahí mismo, de a uno (sql/013).
+function detalleItemsHtml(o: Empresa, tipo: ItemTipo, editable: boolean): string {
+  const lista = itemsDe(o, tipo);
+  if (!lista.length && !editable) return '';
+  const titulo = tipo === 'oferta' ? 'Servicios y productos' : 'Necesidades sin cubrir';
+  const cls = tipo === 'oferta' ? 'tag-offer' : 'tag-need';
+  const tags = lista.map(t => `<span class="tag ${cls}">${esc(itemLabel(t))}${editable && t.id
+    ? ` <button class="tag-quitar" onclick="detItemQuitar(${o.id},${t.id})" title="Quitar" aria-label="Quitar ${esc(itemLabel(t))}">×</button>` : ''}</span>`).join('');
+  const form = editable ? `<div class="det-add">
+      <select class="form-select" id="det-${tipo}-cat" onchange="detItemCategoria('${tipo}')" aria-label="Categoría">
+        <option value="">Categoría…</option>${categorias.map(c => `<option value="${c.id}">${esc(c.nombre)}</option>`).join('')}
+      </select>
+      <input class="form-input" id="det-${tipo}-sub" type="text" list="det-${tipo}-subs" maxlength="120" placeholder="Subcategoría (opcional)" aria-label="Subcategoría"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();detItemAgregar(${o.id},'${tipo}')}">
+      <datalist id="det-${tipo}-subs"></datalist>
+      <button class="btn-out" onclick="detItemAgregar(${o.id},'${tipo}')"><i class="ti ti-plus"></i> Agregar</button>
+    </div><div class="form-msg" id="det-${tipo}-msg"></div>` : '';
+  return `<div class="dsec"><div class="dsec-title">${titulo}</div>
+    <div class="tags">${tags || `<span class="muted-sm">Todavía no hay ${tipo === 'oferta' ? 'servicios o productos' : 'necesidades'} cargados.</span>`}</div>${form}</div>`;
+}
+
+window.detItemCategoria = function (tipo) {
+  const cat = categorias.find(c => c.id === Number($select(`det-${tipo}-cat`).value));
+  $(`det-${tipo}-subs`).innerHTML = (cat?.subcategorias || []).map(x => `<option value="${esc(x)}">`).join('');
+  $input(`det-${tipo}-sub`).placeholder = cat?.esOtros ? 'Describí qué es (obligatorio)' : 'Subcategoría (opcional)';
+};
+
+function detMsg(tipo: ItemTipo, t: string): void {
+  const m = $(`det-${tipo}-msg`);
+  m.textContent = t;
+  m.className = 'form-msg err';
+  m.style.display = 'block';
+}
+
+// Después de cambiar ítems: refresca datos, el detalle abierto y la pantalla de atrás.
+async function refrescarTrasCambioItems(empresaId: number): Promise<void> {
+  await refreshData();
+  window.openDetail(empresaId);
+  const activa = document.querySelector('.screen.active')?.id.replace('screen-', '');
+  if (activa === 'directorio') window.renderDir();
+  else if (activa === 'mis-empresas') window.renderMias();
+  else if (activa === 'vinculacion') window.renderVin();
+}
+
+window.detItemAgregar = async function (empresaId, tipo) {
+  const cat = categorias.find(c => c.id === Number($select(`det-${tipo}-cat`).value));
+  const sub = $input(`det-${tipo}-sub`).value.trim().replace(/\s+/g, ' ');
+  if (!cat) { detMsg(tipo, 'Elegí una categoría.'); return; }
+  if (cat.esOtros && !sub) { detMsg(tipo, 'En "Otros" describí qué es en la subcategoría.'); return; }
+  try {
+    await Empresas.agregarItem(empresaId, tipo, cat.id, sub);
+    await refrescarTrasCambioItems(empresaId);
+  } catch (e) {
+    detMsg(tipo, friendlyError(e));
+  }
+};
+
+window.detItemQuitar = async function (empresaId, itemId) {
+  const o = orgs.find(x => x.id === empresaId);
+  const it = o?.items.find(i => i.id === itemId);
+  if (!it || !confirm(`¿Quitar «${itemLabel(it)}»?`)) return;
+  try {
+    await Empresas.quitarItem(itemId);
+    await refrescarTrasCambioItems(empresaId);
+  } catch (e) {
+    alert(friendlyError(e));
+  }
 };
 
 window.closeModal = function (id) {

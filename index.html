@@ -162,15 +162,31 @@
     <div class="screen" id="screen-vinculacion">
       <div class="filters" id="vin-vistas">
         <button class="chip active" onclick="setVinVista(this,'mias')"><i class="ti ti-star"></i> Mis conexiones</button>
-        <button class="chip" onclick="setVinVista(this,'red')"><i class="ti ti-world"></i> Toda la red</button>
+        <button class="chip" id="vin-chip-buscar" onclick="setVinVista(this,'buscar')"><i class="ti ti-search"></i> Buscar y solicitar</button>
+        <button class="chip hidden" id="vin-chip-red" onclick="setVinVista(this,'red')"><i class="ti ti-world"></i> Toda la red</button>
       </div>
       <div class="section-header">
-        <div class="section-title">Conexiones</div>
+        <div class="section-title" id="vin-title">Conexiones</div>
         <span class="count-pill" id="vin-count">0</span>
       </div>
       <p class="hint-text" id="vin-hint-mias">Coincidencias entre lo que <strong>necesita</strong> una empresa y lo que <strong>ofrece</strong> otra, para tus empresas. Para que haya <strong>match</strong> las dos tienen que aceptar; con el match se habilita un chat privado entre ambas.</p>
       <p class="hint-text hidden" id="vin-hint-red">Todas las coincidencias detectadas en la red, solo para consulta. "Coincidencia exacta" = misma categoría y subcategoría; "Misma categoría" = mismo rubro con distinta subcategoría.</p>
-      <div class="search-row">
+      <div id="vin-buscar" class="hidden">
+        <div class="filters" id="sol-modos">
+          <button class="chip active" data-modo="conseguir" onclick="solModo(this,'conseguir')"><i class="ti ti-shopping-cart"></i> Quiero conseguir</button>
+          <button class="chip" data-modo="ofrecer" onclick="solModo(this,'ofrecer')"><i class="ti ti-briefcase"></i> Quiero ofrecer</button>
+        </div>
+        <p class="hint-text" id="sol-ayuda"></p>
+        <div class="sol-buscador">
+          <select class="form-select" id="sol-cat" onchange="solCategoriaCambio()" aria-label="Categoría"></select>
+          <input class="form-input" id="sol-sub" type="text" list="sol-subs" maxlength="120" aria-label="Subcategoría">
+          <datalist id="sol-subs"></datalist>
+          <button class="btn-prim" id="sol-buscar-btn" onclick="solBuscar()"><i class="ti ti-search"></i> Buscar</button>
+        </div>
+        <div class="form-msg" id="sol-buscar-msg"></div>
+        <div class="vin-list" id="sol-resultados"></div>
+      </div>
+      <div class="search-row" id="vin-search-row">
         <input type="text" id="search-vin" placeholder="Buscar por empresa, categoría o subcategoría..." oninput="renderVin()">
       </div>
       <div class="filters" id="vin-filtros">
@@ -366,6 +382,7 @@
       <div class="filters" id="wm-secciones">
         <button class="chip active" onclick="wmSeccion(this,'bitacora')"><i class="ti ti-list-details"></i> Bitácora</button>
         <button class="chip" onclick="wmSeccion(this,'conexiones')"><i class="ti ti-arrows-exchange"></i> Conexiones</button>
+        <button class="chip" onclick="wmSeccion(this,'solicitudes')"><i class="ti ti-send"></i> Solicitudes</button>
         <button class="chip" onclick="wmSeccion(this,'categorias')"><i class="ti ti-category"></i> Categorías</button>
       </div>
 
@@ -406,6 +423,28 @@
           <table class="admin-table wm-table">
             <thead><tr><th>Necesita</th><th>Ofrece</th><th>Categoría</th><th>Estado</th><th>Aceptó quien necesita</th><th>Aceptó quien ofrece</th><th>Contacto</th></tr></thead>
             <tbody id="wm-con-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="wm-sec-solicitudes" class="hidden">
+        <p class="hint-text">Todas las solicitudes entre empresas (o de personas a empresas), su estado y si hubo contacto por el chat. Por privacidad, el contenido de los mensajes no es visible.</p>
+        <div class="wm-filtros">
+          <input class="form-input" type="text" id="wm-s-buscar" placeholder="Buscar empresa, persona o categoría..." oninput="wmRenderSolicitudes()">
+          <select class="form-input" id="wm-s-estado" onchange="wmRenderSolicitudes()" aria-label="Estado">
+            <option value="">Todos los estados</option>
+            <option value="pendiente">Pendientes</option>
+            <option value="aceptada">Aceptadas</option>
+            <option value="aceptada_sin_contacto">Aceptadas sin contacto</option>
+            <option value="rechazada">Rechazadas</option>
+            <option value="cancelada">Canceladas</option>
+          </select>
+          <span class="count-pill" id="wm-sol-count">0</span>
+        </div>
+        <div class="table-wrap">
+          <table class="admin-table wm-table">
+            <thead><tr><th>Fecha</th><th>De</th><th>Para</th><th>Pedido</th><th>Estado</th><th>Contacto</th></tr></thead>
+            <tbody id="wm-sol-body"></tbody>
           </table>
         </div>
       </div>
@@ -564,7 +603,7 @@
       <div><h2 id="chat-title">Chat</h2><div class="muted-sm" id="chat-sub"></div></div>
       <button class="modal-close" onclick="cerrarChat()" aria-label="Cerrar"><i class="ti ti-x"></i></button>
     </div>
-    <div class="chat-privacidad"><i class="ti ti-lock"></i> Chat privado: solo lo leen los usuarios de estas dos empresas. La plataforma registra que hubo contacto, no el contenido.</div>
+    <div class="chat-privacidad"><i class="ti ti-lock"></i> <span id="chat-privacidad-txt">Chat privado: solo lo leen los usuarios de estas dos empresas. La plataforma registra que hubo contacto, no el contenido.</span></div>
     <div class="chat-tabs" id="chat-tabs"></div>
     <div class="chat-contexto" id="chat-contexto"></div>
     <div class="chat-mensajes" id="chat-mensajes"></div>
@@ -574,6 +613,36 @@
       <button class="btn-prim" id="chat-send" onclick="enviarChat()"><i class="ti ti-send"></i> Enviar</button>
     </div>
     <div class="form-msg" id="chat-msg"></div>
+  </div>
+</div>
+
+<!-- MODAL: ENVIAR SOLICITUD -->
+<div class="modal-overlay" id="modal-solicitud">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2 id="sol-modal-title">Solicitud</h2>
+      <button class="modal-close" onclick="cerrarSolicitud()" aria-label="Cerrar"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="sol-f-que">¿Qué querés?</label>
+      <select class="form-input" id="sol-f-que" onchange="solFormCambio()"></select>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="sol-f-de">De parte de</label>
+      <select class="form-input" id="sol-f-de" onchange="solFormCambio()"></select>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="sol-f-msg">Mensaje inicial <span class="label-note">(opcional, hasta 1000 caracteres)</span></label>
+      <textarea class="form-input form-textarea" id="sol-f-msg" maxlength="1000" placeholder="Contá brevemente qué necesitás u ofrecés, cantidades, plazos..."></textarea>
+    </div>
+    <label class="sol-check hidden" id="sol-f-agregar-wrap"><input type="checkbox" id="sol-f-agregar"> <span id="sol-f-agregar-label"></span></label>
+    <div class="sol-aviso muted-sm" id="sol-f-aviso"></div>
+    <p class="hint-text hint-tight">La empresa la acepta o la rechaza. Si la acepta, se abre un chat privado entre ustedes.</p>
+    <div class="action-row">
+      <button class="btn-prim" id="sol-f-enviar" onclick="enviarSolicitud()"><i class="ti ti-send"></i> Enviar solicitud</button>
+      <button class="btn-out" onclick="cerrarSolicitud()">Cerrar</button>
+    </div>
+    <div class="form-msg" id="sol-f-res"></div>
   </div>
 </div>
 

@@ -88,8 +88,16 @@ const FAQ: Array<{ id: string; pregunta: string; respuesta: string; pantalla?: s
     respuesta: '<strong>Retirar</strong> deshace tu aceptación (solo antes del match). <strong>Rechazar</strong> hace que la conexión deje de sugerirse a ambas empresas y no se puede deshacer.',
   },
   {
+    id: 'solicitudes', pregunta: '¿Cómo pido un servicio que no tengo cargado?', pantalla: 'vinculacion',
+    respuesta: 'En <strong>Vinculación → Buscar y solicitar</strong> elegí <em>Quiero conseguir</em> (o <em>Quiero ofrecer</em>), la categoría y, si querés, la subcategoría. Vas a ver las empresas que lo ofrecen (o lo necesitan) y podés mandarles una <strong>solicitud</strong> en nombre de tu empresa o a tu nombre, con un mensaje. Si la aceptan, se abre un chat privado. También podés enviarla desde el detalle de cualquier empresa.',
+  },
+  {
+    id: 'rapido', pregunta: '¿Puedo agregar un servicio o necesidad sin editar toda la empresa?', pantalla: 'mis-empresas',
+    respuesta: 'Sí. Abrí el detalle de tu empresa (en <strong>Mis empresas</strong>): en <em>Servicios y productos</em> y en <em>Necesidades sin cubrir</em> elegí la categoría, escribí la subcategoría y tocá <strong>Agregar</strong>. Con la ✕ de cada ítem lo quitás.',
+  },
+  {
     id: 'privacidad', pregunta: '¿Quién puede leer mis mensajes?',
-    respuesta: 'Solo los usuarios de las dos empresas de la conexión. Ni los administradores ni los webmasters pueden leer el contenido: la plataforma solo registra que hubo contacto (cantidad de mensajes y fechas).',
+    respuesta: 'Solo los usuarios de las dos empresas de la conexión (o las dos partes de una solicitud). Ni los administradores ni los webmasters pueden leer el contenido: la plataforma solo registra que hubo contacto (cantidad de mensajes y fechas).',
   },
   {
     id: 'revisar', pregunta: '¿Qué significa "Revisar" en mis ofertas o necesidades?', pantalla: 'mis-empresas',

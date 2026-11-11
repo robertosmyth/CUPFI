@@ -44,6 +44,7 @@ CUPFI/
 │   ├── 005_seed_demo_empresas.sql         # (Opcional) 17 empresas de ejemplo para poblar el directorio
 │   ├── 011_empresa_uid_on_delete_set_null.sql # Migración para el proyecto ya existente (ver más abajo)
 │   ├── 012_etapa1_conexiones.sql          # Categorías, conexiones, chat, webmaster, bitácora y guía
+│   ├── 013_solicitudes.sql                # Solicitudes (buscar y pedir/ofrecer) y carga rápida de ítems
 │   └── historial/                         # Migraciones ya aplicadas al proyecto actual (solo referencia,
 │                                           # no hace falta correrlas en un proyecto nuevo: 001 ya las incluye)
 ├── supabase/functions/admin-update-user/  # Edge Function (opcional): admin edita email/contraseña
@@ -197,6 +198,8 @@ correrlos más de una vez.
    [`sql/012_etapa1_conexiones.sql`](sql/012_etapa1_conexiones.sql) (después
    del paso 3, así convierte también las empresas de ejemplo al formato con
    categorías; si cargás el ejemplo después, volvé a correr 012).
+   Después, pegá y ejecutá [`sql/013_solicitudes.sql`](sql/013_solicitudes.sql)
+   (solicitudes y carga rápida de ofertas/necesidades).
 5. Registrate normalmente desde la app (pestaña "Registrarse"). La
    **primera** cuenta de un proyecto nuevo no es admin automáticamente: hay
    que asignarle el rol manualmente (paso siguiente). A partir de ahí, ese
@@ -256,6 +259,28 @@ esquema está al día.
    El sitio anterior sigue funcionando con la base ya actualizada mientras
    se publica; si alguien creó una empresa justo en ese intervalo, volver a
    correr `012` la convierte (es seguro repetirlo).
+
+### Actualización: solicitudes y carga rápida (sql/013)
+
+1. En el SQL Editor, pegá y ejecutá
+   [`sql/013_solicitudes.sql`](sql/013_solicitudes.sql). Solo agrega
+   (tablas `solicitudes` y `solicitud_mensajes` y sus funciones): no cambia
+   ni borra nada de lo existente y se puede correr más de una vez.
+2. Publicá el sitio (merge a `main`). Si el sitio nuevo llegara a
+   publicarse antes que la base, sigue funcionando: solo no muestra
+   solicitudes hasta que se corra 013.
+
+Qué agrega:
+- **Carga rápida**: en el detalle de su empresa, el usuario agrega o quita
+  un servicio/producto o una necesidad sin abrir el formulario completo.
+- **Buscar y solicitar** (pestaña Vinculación): busca por categoría y
+  subcategoría quién ofrece o necesita algo, aunque no lo tenga cargado en
+  su empresa, y le envía una **solicitud** en nombre de su empresa o a su
+  nombre, con un mensaje inicial. La empresa la acepta (se abre un chat
+  privado) o la rechaza. Si entre las dos empresas ya había una
+  coincidencia automática en esa categoría, la solicitud cuenta como
+  aceptación de esa conexión (no se duplica). El webmaster ve las
+  solicitudes y si hubo contacto, nunca el contenido.
 
 ### Confirmación de email
 
