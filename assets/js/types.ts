@@ -176,6 +176,55 @@ export type SolicitudEnvioResultado = {
   item_agregado: boolean;
 };
 
+// ─── Blog (sql/014) ───
+export type BlogPostRow = {
+  id: number;
+  autor_id: string;
+  empresa_id: number | null; // null = a título personal
+  texto: string;
+  imagenes: string[]; // rutas en el bucket privado 'blog'
+  video_path: string | null;
+  video_url: string | null; // YouTube / Vimeo
+  oculto: boolean;
+  oculto_por: string | null;
+  oculto_at: string | null;
+  oculto_motivo: string | null;
+  created_at: string;
+  editado_at: string | null;
+};
+
+export type BlogComentarioRow = {
+  id: number;
+  post_id: number;
+  parent_id: number | null;
+  autor_id: string;
+  texto: string;
+  oculto: boolean;
+  oculto_por: string | null;
+  oculto_at: string | null;
+  oculto_motivo: string | null;
+  created_at: string;
+  editado_at: string | null;
+};
+
+export type BlogPostLikeRow = { post_id: number; user_id: string; created_at: string };
+export type BlogComentarioLikeRow = { comentario_id: number; user_id: string; created_at: string };
+
+export type BlogDenunciaRow = {
+  id: number;
+  post_id: number | null;
+  comentario_id: number | null;
+  denunciante_id: string;
+  motivo: string;
+  estado: 'abierta' | 'resuelta';
+  resolucion: 'ocultado' | 'mostrado' | 'descartada' | null;
+  resuelta_por: string | null;
+  resuelta_at: string | null;
+  created_at: string;
+};
+
+export type BlogTipo = 'post' | 'comentario';
+
 export type EmpresaUsuarioRow = {
   empresa_id: number;
   user_id: string;
@@ -266,6 +315,11 @@ export interface Database {
         Update: never;
         Relationships: [];
       };
+      blog_posts: { Row: BlogPostRow; Insert: never; Update: never; Relationships: [] };
+      blog_comentarios: { Row: BlogComentarioRow; Insert: never; Update: never; Relationships: [] };
+      blog_post_likes: { Row: BlogPostLikeRow; Insert: never; Update: never; Relationships: [] };
+      blog_comentario_likes: { Row: BlogComentarioLikeRow; Insert: never; Update: never; Relationships: [] };
+      blog_denuncias: { Row: BlogDenunciaRow; Insert: never; Update: never; Relationships: [] };
     };
     // OJO: acá tiene que ir un tipo SIN index signature (no
     // Record<string, never>). Un Record<string, never> sí tiene index
@@ -335,6 +389,22 @@ export interface Database {
         Args: Record<never, never>;
         Returns: SolicitudResumenRow[];
       };
+      blog_publicar: {
+        Args: { p_empresa: number | null; p_texto: string; p_imagenes: string[]; p_video_path: string | null; p_video_url: string | null };
+        Returns: BlogPostRow;
+      };
+      blog_editar: {
+        Args: { p_post: number; p_texto: string; p_imagenes: string[]; p_video_path: string | null; p_video_url: string | null };
+        Returns: { post: BlogPostRow; quitados: string[] };
+      };
+      blog_borrar: { Args: { p_post: number }; Returns: string[] };
+      blog_comentar: { Args: { p_post: number; p_parent: number | null; p_texto: string }; Returns: BlogComentarioRow };
+      blog_editar_comentario: { Args: { p_comentario: number; p_texto: string }; Returns: BlogComentarioRow };
+      blog_borrar_comentario: { Args: { p_comentario: number }; Returns: undefined };
+      blog_me_gusta: { Args: { p_tipo: BlogTipo; p_id: number }; Returns: boolean };
+      blog_denunciar: { Args: { p_tipo: BlogTipo; p_id: number; p_motivo: string }; Returns: BlogDenunciaRow };
+      blog_moderar: { Args: { p_tipo: BlogTipo; p_id: number; p_accion: 'ocultar' | 'mostrar'; p_motivo: string | null }; Returns: undefined };
+      blog_descartar_denuncia: { Args: { p_denuncia: number }; Returns: undefined };
     };
     Enums: Record<never, never>;
     CompositeTypes: Record<never, never>;

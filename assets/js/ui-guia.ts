@@ -96,6 +96,10 @@ const FAQ: Array<{ id: string; pregunta: string; respuesta: string; pantalla?: s
     respuesta: 'Sí. Abrí el detalle de tu empresa (en <strong>Mis empresas</strong>): en <em>Servicios y productos</em> y en <em>Necesidades sin cubrir</em> elegí la categoría, escribí la subcategoría y tocá <strong>Agregar</strong>. Con la ✕ de cada ítem lo quitás.',
   },
   {
+    id: 'blog', pregunta: '¿Cómo funciona el Blog?', pantalla: 'blog',
+    respuesta: 'En <strong>Blog</strong> podés publicar novedades en nombre de tu empresa o a tu nombre, con hasta 4 fotos o un video (subido o un link de YouTube/Vimeo). Todos los usuarios de la red pueden dar <em>me gusta</em>, comentar y responder. Podés editar o borrar lo tuyo desde los tres puntos de cada publicación. Si ves algo que no corresponde, usá <strong>Denunciar</strong>: lo revisan los webmasters.',
+  },
+  {
     id: 'privacidad', pregunta: '¿Quién puede leer mis mensajes?',
     respuesta: 'Solo los usuarios de las dos empresas de la conexión (o las dos partes de una solicitud). Ni los administradores ni los webmasters pueden leer el contenido: la plataforma solo registra que hubo contacto (cantidad de mensajes y fechas).',
   },
