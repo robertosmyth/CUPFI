@@ -3,7 +3,7 @@
 // ══════════════════════════════════════════════
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 import { getSupabase } from './supabaseClient.ts';
-import type { CheckProfileDuplicatesResult, Profile } from './types.ts';
+import type { CheckProfileDuplicatesResult, PerfilPublico, Profile } from './types.ts';
 
 export interface CheckProfileDuplicatesArgs {
   nombre?: string | null;
@@ -33,6 +33,31 @@ export async function checkProfileDuplicates(
   return data || { nombre_apellido: false, email: false, tel: false };
 }
 
+// Columnas de profiles que cualquier usuario con sesión puede leer. El
+// email y el teléfono personales NO están acá: se piden aparte con
+// perfiles_contacto(), que solo devuelve los que el usuario tiene permitido
+// ver (ver sql/015_normas_seguridad.sql, Ley 25.326).
+export const PERFIL_COLS = 'id, nombre, apellido, role, created_at, is_webmaster, guia_vista';
+
+type ContactoRow = { id: string; email: string | null; tel: string | null };
+
+// Email y teléfono visibles para el usuario actual. Si la base todavía no
+// tiene sql/015, se leen como antes (todas las columnas eran visibles).
+export async function listContactos(): Promise<ContactoRow[]> {
+  const supabase = await getSupabase();
+  const { data, error } = await supabase.rpc('perfiles_contacto', {});
+  if (!error) return (data || []) as ContactoRow[];
+  if (!/perfiles_contacto|PGRST202|function .* does not exist|Could not find the function/i.test(`${error.code} ${error.message}`)) throw error;
+  const viejo = await supabase.from('profiles').select('id, email, tel');
+  if (viejo.error) throw viejo.error;
+  return (viejo.data || []) as ContactoRow[];
+}
+
+function conContacto<T extends { id: string }>(perfil: T, contactos: ContactoRow[]): T & { email: string | null; tel: string | null } {
+  const c = contactos.find(x => x.id === perfil.id);
+  return { ...perfil, email: c?.email ?? null, tel: c?.tel ?? null };
+}
+
 export interface SignUpArgs {
   nombre: string;
   apellido: string;
@@ -41,12 +66,17 @@ export interface SignUpArgs {
   password: string;
 }
 
+// Versión del aviso de privacidad que acepta quien se registra (queda
+// guardada en su cuenta junto con la fecha, como constancia del
+// consentimiento — Ley 25.326 art. 5).
+export const PRIVACIDAD_VERSION = 1;
+
 export async function signUp({ nombre, apellido, email, tel, password }: SignUpArgs) {
   const supabase = await getSupabase();
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: { nombre, apellido, tel } },
+    options: { data: { nombre, apellido, tel, privacidad_version: PRIVACIDAD_VERSION, privacidad_aceptada_at: new Date().toISOString() } },
   });
   if (error) throw error;
   return data; // data.session es null si el proyecto requiere confirmar email
@@ -96,13 +126,14 @@ export async function getCurrentProfile(): Promise<Profile | null> {
   const supabase = await getSupabase();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
-  const { data, error } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle();
+  const { data: base, error } = await supabase.from('profiles').select(PERFIL_COLS).eq('id', user.id).maybeSingle();
   if (error) throw error;
-  if (!data) return { id: user.id, nombre: '', apellido: '', tel: '', role: 'user', email: user.email ?? null };
+  if (!base) return { id: user.id, nombre: '', apellido: '', tel: '', role: 'user', email: user.email ?? null };
+  const data = conContacto(base as Profile, await listContactos());
   if (user.email && data.email !== user.email) {
     try {
       const synced = await syncEmailFromAuth();
-      if (synced) return { ...synced, email: synced.email || user.email };
+      if (synced) return { ...data, ...synced, email: user.email };
     } catch (e) {
       console.error('No se pudo sincronizar el email con auth.users:', e);
     }
@@ -113,9 +144,12 @@ export async function getCurrentProfile(): Promise<Profile | null> {
 // Todos los perfiles visibles (requiere estar autenticado, ver RLS)
 export async function listProfiles(): Promise<Profile[]> {
   const supabase = await getSupabase();
-  const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: true });
+  const [{ data, error }, contactos] = await Promise.all([
+    supabase.from('profiles').select(PERFIL_COLS).order('created_at', { ascending: true }),
+    listContactos(),
+  ]);
   if (error) throw error;
-  return data;
+  return (data as Profile[]).map(p => conContacto(p, contactos));
 }
 
 // Cambia el rol de un usuario. Solo funciona si quien llama ya es admin:
@@ -124,9 +158,9 @@ export async function listProfiles(): Promise<Profile[]> {
 // sql/historial/003_lockdown_role_and_uid.sql y
 // sql/historial/004_admin_role_management.sql), no es una regla que
 // dependa del código del cliente.
-export async function setUserRole(userId: string, role: string): Promise<Profile> {
+export async function setUserRole(userId: string, role: string): Promise<PerfilPublico> {
   const supabase = await getSupabase();
-  const { data, error } = await supabase.from('profiles').update({ role }).eq('id', userId).select().maybeSingle();
+  const { data, error } = await supabase.from('profiles').update({ role }).eq('id', userId).select(PERFIL_COLS).maybeSingle();
   if (error) throw error;
   if (!data) throw new Error('No se pudo cambiar el rol (¿ya no sos admin, o el usuario no existe?).');
   return data;
@@ -140,7 +174,7 @@ export interface UpdateOwnProfileArgs {
 
 // Actualiza los datos propios del perfil (nombre, apellido, teléfono).
 // Permitido por RLS porque auth.uid() = id (ver sql/001_schema.sql).
-export async function updateOwnProfile({ nombre, apellido, tel }: UpdateOwnProfileArgs): Promise<Profile | null> {
+export async function updateOwnProfile({ nombre, apellido, tel }: UpdateOwnProfileArgs): Promise<PerfilPublico | null> {
   const supabase = await getSupabase();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('No hay sesión activa.');
@@ -148,7 +182,7 @@ export async function updateOwnProfile({ nombre, apellido, tel }: UpdateOwnProfi
     .from('profiles')
     .update({ nombre, apellido, tel })
     .eq('id', user.id)
-    .select()
+    .select(PERFIL_COLS)
     .maybeSingle();
   if (error) throw error;
   return data;
@@ -165,13 +199,13 @@ export interface AdminUpdateProfileArgs {
 // política de UPDATE de profiles ya deja pasar "auth.uid() = id or es
 // admin" (ver sql/001_schema.sql) — no hace falta la Edge Function para
 // esto, a diferencia de email/password (ver adminUpdateUserAuth).
-export async function adminUpdateProfile(userId: string, { nombre, apellido, tel }: AdminUpdateProfileArgs): Promise<Profile | null> {
+export async function adminUpdateProfile(userId: string, { nombre, apellido, tel }: AdminUpdateProfileArgs): Promise<PerfilPublico | null> {
   const supabase = await getSupabase();
   const { data, error } = await supabase
     .from('profiles')
     .update({ nombre, apellido, tel })
     .eq('id', userId)
-    .select()
+    .select(PERFIL_COLS)
     .maybeSingle();
   if (error) throw error;
   return data;
@@ -215,6 +249,37 @@ export async function updatePassword(newPassword: string): Promise<void> {
   const supabase = await getSupabase();
   const { error } = await supabase.auth.updateUser({ password: newPassword });
   if (error) throw error;
+  await claveCambiada();
+}
+
+// Cambio de contraseña con la sesión iniciada: primero se confirma la
+// contraseña actual (así nadie que encuentre la sesión abierta puede
+// cambiarla), después se guarda la nueva.
+export async function cambiarClave(email: string, actual: string, nueva: string): Promise<void> {
+  const supabase = await getSupabase();
+  const { error: e1 } = await supabase.auth.signInWithPassword({ email, password: actual });
+  if (e1) throw new Error(/invalid login credentials/i.test(e1.message) ? 'La contraseña actual no es correcta.' : e1.message);
+  await updatePassword(nueva);
+}
+
+// Quita el aviso de "contraseña temporal" y deja constancia en la bitácora.
+// Si la base todavía no tiene sql/015 no pasa nada.
+async function claveCambiada(): Promise<void> {
+  try {
+    const supabase = await getSupabase();
+    const { error } = await supabase.rpc('clave_cambiada', {});
+    if (error) console.warn('No se pudo registrar el cambio de contraseña:', error.message);
+  } catch (e) { console.warn('No se pudo registrar el cambio de contraseña:', e); }
+}
+
+// ¿El usuario tiene una contraseña temporal asignada por el administrador?
+export async function tieneClaveTemporal(): Promise<boolean> {
+  try {
+    const supabase = await getSupabase();
+    const { data, error } = await supabase.from('claves_temporales').select('user_id').limit(1);
+    if (error) return false;
+    return (data || []).length > 0;
+  } catch { return false; }
 }
 
 // Inicia un cambio de email: Supabase le manda un correo de confirmación a
@@ -233,7 +298,7 @@ export async function updateEmail(newEmail: string): Promise<void> {
 // Sincroniza public.profiles.email con el email confirmado en auth.users.
 // Se usa después del evento 'USER_UPDATED' (el usuario volvió de confirmar
 // un cambio de email por correo).
-export async function syncEmailFromAuth(): Promise<Profile | null> {
+export async function syncEmailFromAuth(): Promise<PerfilPublico | null> {
   const supabase = await getSupabase();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
@@ -241,7 +306,7 @@ export async function syncEmailFromAuth(): Promise<Profile | null> {
     .from('profiles')
     .update({ email: user.email })
     .eq('id', user.id)
-    .select()
+    .select(PERFIL_COLS)
     .maybeSingle();
   if (error) throw error;
   return data;
@@ -250,7 +315,7 @@ export async function syncEmailFromAuth(): Promise<Profile | null> {
 // Registra en la bitácora el inicio o cierre de sesión (solo esos dos
 // eventos se pueden registrar desde el navegador, ver registrar_evento en
 // sql/012). Nunca debe romper el login/logout: los errores se ignoran.
-export async function registrarEvento(accion: 'sesion_inicio' | 'sesion_cierre'): Promise<void> {
+export async function registrarEvento(accion: 'sesion_inicio' | 'sesion_cierre' | 'sesion_inactividad'): Promise<void> {
   try {
     const supabase = await getSupabase();
     const { error } = await supabase.rpc('registrar_evento', { p_accion: accion });

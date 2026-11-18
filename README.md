@@ -46,6 +46,7 @@ CUPFI/
 │   ├── 012_etapa1_conexiones.sql          # Categorías, conexiones, chat, webmaster, bitácora y guía
 │   ├── 013_solicitudes.sql                # Solicitudes (buscar y pedir/ofrecer) y carga rápida de ítems
 │   ├── 014_blog.sql                       # Blog: publicaciones, fotos/videos, comentarios, me gusta, moderación
+│   ├── 015_normas_seguridad.sql           # Normas: contacto personal protegido, links seguros, claves temporales
 │   └── historial/                         # Migraciones ya aplicadas al proyecto actual (solo referencia,
 │                                           # no hace falta correrlas en un proyecto nuevo: 001 ya las incluye)
 ├── supabase/functions/admin-update-user/  # Edge Function (opcional): admin edita email/contraseña
@@ -201,7 +202,8 @@ correrlos más de una vez.
    categorías; si cargás el ejemplo después, volvé a correr 012).
    Después, pegá y ejecutá [`sql/013_solicitudes.sql`](sql/013_solicitudes.sql)
    (solicitudes y carga rápida de ofertas/necesidades) y
-   [`sql/014_blog.sql`](sql/014_blog.sql) (blog).
+   [`sql/014_blog.sql`](sql/014_blog.sql) (blog) y
+   [`sql/015_normas_seguridad.sql`](sql/015_normas_seguridad.sql) (seguridad y datos personales).
 5. Registrate normalmente desde la app (pestaña "Registrarse"). La
    **primera** cuenta de un proyecto nuevo no es admin automáticamente: hay
    que asignarle el rol manualmente (paso siguiente). A partir de ahí, ese
@@ -309,6 +311,41 @@ Qué agrega (pestaña **Blog**, solo para usuarios con cuenta):
 - Si se elimina una cuenta, sus publicaciones se borran pero los archivos
   ya subidos quedan en Storage (se pueden limpiar desde el panel de
   Supabase, carpeta con el id del usuario).
+
+### Actualización: normas de seguridad, privacidad y accesibilidad (sql/015)
+
+1. En el SQL Editor, pegá y ejecutá
+   [`sql/015_normas_seguridad.sql`](sql/015_normas_seguridad.sql). Se puede
+   correr más de una vez.
+2. Publicá el sitio (merge a `main`).
+3. En el panel de Supabase, **Authentication → Policies / Passwords**:
+   - *Minimum password length*: **8**.
+   - *Password requirements*: **Lowercase, uppercase letters, digits and
+     symbols**. (La página ya lo exige; esto hace que también lo exija el
+     servidor, aunque alguien use la API directamente.)
+   - *Leaked password protection*: activarla si el plan lo permite (rechaza
+     contraseñas que aparecieron en filtraciones públicas).
+
+Qué agrega:
+- **Contraseñas**: mínimo 8 caracteres con mayúscula, minúscula, número y
+  símbolo, con requisitos y nivel de seguridad a la vista mientras se
+  escribe, botón para ver/ocultar, y cambio de contraseña desde *Mi perfil*
+  (pidiendo la actual). Aviso para quien tiene una **contraseña temporal**
+  (tabla `claves_temporales`, la carga el administrador).
+- **Cierre de sesión tras 30 minutos sin actividad**, con aviso un minuto
+  antes. Queda en la bitácora, igual que cada cambio de contraseña.
+- **Datos personales (Ley 25.326)**: aviso de privacidad (al registrarse hay
+  que aceptarlo y queda la constancia con fecha y versión). El email y el
+  teléfono personales solo los ven el propio usuario, los administradores y
+  quienes tengan una vinculación o solicitud aceptada con él.
+- **Seguridad**: política de seguridad de contenido (CSP), links de empresas
+  solo `http/https`, logos limitados a imágenes de hasta 800 KB en la carpeta
+  de cada usuario, el email del perfil siempre igual al de la cuenta,
+  tipografía servida desde el propio sitio (sin enviar datos a Google).
+- **Accesibilidad (WCAG 2.2 AA)**: contraste, foco visible, navegación
+  completa con teclado, ventanas que se cierran con Esc, etiquetas y
+  mensajes para lectores de pantalla, "Saltar al contenido", título por
+  sección y respeto de "reducir movimiento".
 
 ### Confirmación de email
 

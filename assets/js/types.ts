@@ -320,6 +320,7 @@ export interface Database {
       blog_post_likes: { Row: BlogPostLikeRow; Insert: never; Update: never; Relationships: [] };
       blog_comentario_likes: { Row: BlogComentarioLikeRow; Insert: never; Update: never; Relationships: [] };
       blog_denuncias: { Row: BlogDenunciaRow; Insert: never; Update: never; Relationships: [] };
+      claves_temporales: { Row: { user_id: string; created_at: string }; Insert: never; Update: never; Relationships: [] };
     };
     // OJO: acá tiene que ir un tipo SIN index signature (no
     // Record<string, never>). Un Record<string, never> sí tiene index
@@ -355,7 +356,15 @@ export interface Database {
         Returns: ContactoResumenRow[];
       };
       registrar_evento: {
-        Args: { p_accion: 'sesion_inicio' | 'sesion_cierre' };
+        Args: { p_accion: 'sesion_inicio' | 'sesion_cierre' | 'sesion_inactividad' };
+        Returns: undefined;
+      };
+      perfiles_contacto: {
+        Args: Record<never, never>;
+        Returns: { id: string; email: string | null; tel: string | null }[];
+      };
+      clave_cambiada: {
+        Args: Record<never, never>;
         Returns: undefined;
       };
       marcar_guia_vista: {
@@ -426,6 +435,9 @@ export interface Profile {
   guia_vista?: boolean;
   created_at?: string;
 }
+
+// Perfil sin email ni teléfono (lo que se puede leer directo de la tabla).
+export type PerfilPublico = Omit<Profile, 'email' | 'tel'>;
 
 export type ConexionAccion = 'aceptar' | 'rechazar' | 'retirar';
 

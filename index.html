@@ -5,13 +5,19 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Red de Vinculación Empresarial – FI-UNLZ</title>
 <meta name="description" content="Plataforma de vinculación entre graduados y empresas de la Facultad de Ingeniería de la UNLZ.">
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;800&display=swap" rel="stylesheet">
+<meta name="theme-color" content="#3B24C8">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<!-- Política de seguridad de contenido (OWASP / ISO 27002 8.26): qué
+     orígenes puede usar la página. GitHub Pages no permite cabeceras
+     propias, por eso va como meta. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; script-src-elem 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://qxsqjufhkdmhowshspgb.supabase.co https://*.tile.openstreetmap.org https://i.ytimg.com; media-src 'self' blob: https://qxsqjufhkdmhowshspgb.supabase.co; font-src 'self' data:; connect-src 'self' https://qxsqjufhkdmhowshspgb.supabase.co wss://qxsqjufhkdmhowshspgb.supabase.co https://nominatim.openstreetmap.org; frame-src https://www.youtube-nocookie.com https://player.vimeo.com; object-src 'none'; base-uri 'self'; form-action 'self'">
 <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
+<a class="saltar" href="#contenido" onclick="event.preventDefault();irAlContenido()">Saltar al contenido</a>
 
 <!-- ═══ AUTH ═══ -->
-<div id="auth-wrap" class="auth-wrap">
+<main id="auth-wrap" class="auth-wrap">
   <div class="auth-card">
     <div class="auth-logo">
       <svg width="32" height="40" viewBox="0 0 32 40" fill="none">
@@ -29,17 +35,17 @@
         <div class="t3">Universidad Nacional de Lomas de Zamora</div>
       </div>
     </div>
-    <div class="auth-title">Red de Vinculación Empresarial</div>
+    <h1 class="auth-title">Red de Vinculación Empresarial</h1>
     <div class="auth-sub">Plataforma para graduados y empresas vinculadas a la FI-UNLZ.</div>
-    <div class="auth-tabs">
-      <div class="auth-tab active" onclick="authTab('login')">Iniciar sesión</div>
-      <div class="auth-tab" onclick="authTab('registro')">Registrarse</div>
+    <div class="auth-tabs" role="tablist" aria-label="Acceso">
+      <button type="button" class="auth-tab active" role="tab" aria-selected="true" aria-controls="af-login" onclick="authTab('login')">Iniciar sesión</button>
+      <button type="button" class="auth-tab" role="tab" aria-selected="false" aria-controls="af-registro" onclick="authTab('registro')">Registrarse</button>
     </div>
     <div class="auth-form active" id="af-login">
-      <label class="fl">Email</label>
-      <input class="fi" type="email" id="l-email" placeholder="tu@email.com" onkeydown="if(event.key==='Enter')doLogin()">
-      <label class="fl">Contraseña</label>
-      <input class="fi" type="password" id="l-pass" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
+      <label class="fl" for="l-email">Email</label>
+      <input class="fi" type="email" id="l-email" placeholder="tu@email.com" autocomplete="username" inputmode="email" onkeydown="if(event.key==='Enter')doLogin()">
+      <label class="fl" for="l-pass">Contraseña</label>
+      <input class="fi" type="password" id="l-pass" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
       <button class="btn-main" id="l-btn" onclick="doLogin()">Ingresar</button>
       <div class="auth-msg" id="l-msg"></div>
       <div class="auth-links"><a href="#" onclick="event.preventDefault();openForgotPassword()">¿Olvidaste tu contraseña?</a></div>
@@ -47,43 +53,54 @@
     <div class="auth-form" id="af-registro">
       <div class="hint">Creá tu cuenta como graduado/a de la FI-UNLZ.</div>
       <div class="form-row-2">
-        <div><label class="fl">Nombre *</label><input class="fi" type="text" id="r-nombre" placeholder="Nombre"></div>
-        <div><label class="fl">Apellido *</label><input class="fi" type="text" id="r-apellido" placeholder="Apellido"></div>
+        <div><label class="fl" for="r-nombre">Nombre *</label><input class="fi" type="text" id="r-nombre" autocomplete="given-name" required></div>
+        <div><label class="fl" for="r-apellido">Apellido *</label><input class="fi" type="text" id="r-apellido" autocomplete="family-name" required></div>
       </div>
-      <label class="fl">Email *</label>
-      <input class="fi" type="email" id="r-email" placeholder="tu@email.com">
-      <label class="fl">Teléfono móvil *</label>
-      <input class="fi" type="tel" id="r-tel" placeholder="+54 11 1234-5678">
-      <label class="fl">Contraseña * <span class="label-note">(mín. 8 caracteres)</span></label>
-      <input class="fi" type="password" id="r-pass" placeholder="••••••••">
-      <label class="fl">Confirmar contraseña *</label>
-      <input class="fi" type="password" id="r-pass2" placeholder="••••••••" onkeydown="if(event.key==='Enter')doRegister()">
+      <label class="fl" for="r-email">Email *</label>
+      <input class="fi" type="email" id="r-email" placeholder="tu@email.com" autocomplete="email" inputmode="email" required>
+      <label class="fl" for="r-tel">Teléfono móvil *</label>
+      <input class="fi" type="tel" id="r-tel" placeholder="+54 11 1234-5678" autocomplete="tel" required>
+      <label class="fl" for="r-pass">Contraseña *</label>
+      <input class="fi" type="password" id="r-pass" autocomplete="new-password" aria-describedby="r-pass-req" required>
+      <div class="clave-req" id="r-pass-req" data-clave-para="r-pass"></div>
+      <label class="fl" for="r-pass2">Confirmar contraseña *</label>
+      <input class="fi" type="password" id="r-pass2" autocomplete="new-password" required onkeydown="if(event.key==='Enter')doRegister()">
+      <label class="check-row" for="r-privacidad">
+        <input type="checkbox" id="r-privacidad">
+        <span>Leí y acepto el <a href="#" onclick="event.preventDefault();abrirPrivacidad()">aviso de privacidad</a>.</span>
+      </label>
       <button class="btn-main" id="r-btn" onclick="doRegister()">Crear cuenta</button>
       <div class="auth-msg" id="r-msg"></div>
     </div>
     <div class="auth-form" id="af-forgot">
       <div class="hint">Ingresá tu email y te mandamos un link para restablecer tu contraseña.</div>
-      <label class="fl">Email</label>
-      <input class="fi" type="email" id="fp-email" placeholder="tu@email.com" onkeydown="if(event.key==='Enter')doForgotPassword()">
+      <label class="fl" for="fp-email">Email</label>
+      <input class="fi" type="email" id="fp-email" placeholder="tu@email.com" autocomplete="email" inputmode="email" onkeydown="if(event.key==='Enter')doForgotPassword()">
       <button class="btn-main" id="fp-btn" onclick="doForgotPassword()">Enviar link</button>
       <div class="auth-msg" id="fp-msg"></div>
       <div class="auth-links"><a href="#" onclick="event.preventDefault();authTab('login')">Volver a iniciar sesión</a></div>
     </div>
     <div class="auth-form" id="af-reset">
       <div class="hint">Ingresá tu nueva contraseña.</div>
-      <label class="fl">Nueva contraseña <span class="label-note">(mín. 8 caracteres)</span></label>
-      <input class="fi" type="password" id="rp-pass" placeholder="••••••••">
-      <label class="fl">Confirmar contraseña</label>
-      <input class="fi" type="password" id="rp-pass2" placeholder="••••••••" onkeydown="if(event.key==='Enter')doResetPassword()">
+      <label class="fl" for="rp-pass">Nueva contraseña</label>
+      <input class="fi" type="password" id="rp-pass" autocomplete="new-password" aria-describedby="rp-pass-req">
+      <div class="clave-req" id="rp-pass-req" data-clave-para="rp-pass"></div>
+      <label class="fl" for="rp-pass2">Confirmar contraseña</label>
+      <input class="fi" type="password" id="rp-pass2" autocomplete="new-password" onkeydown="if(event.key==='Enter')doResetPassword()">
       <button class="btn-main" id="rp-btn" onclick="doResetPassword()">Guardar nueva contraseña</button>
       <div class="auth-msg" id="rp-msg"></div>
     </div>
+    <div class="auth-pie">
+      <a href="#" onclick="event.preventDefault();abrirPrivacidad()">Aviso de privacidad</a>
+      <span aria-hidden="true">·</span>
+      <span>Facultad de Ingeniería – UNLZ</span>
+    </div>
   </div>
-</div>
+</main>
 
 <!-- ═══ MAIN APP ═══ -->
 <div id="main-app" class="main-app">
-  <div class="topbar">
+  <header class="topbar">
     <div class="brand">
       <svg width="26" height="34" viewBox="0 0 32 40" fill="none">
         <polygon points="8,0 20,0 20,10 8,10" fill="rgba(255,255,255,.5)"/>
@@ -100,7 +117,7 @@
         <div class="t3">Universidad Nacional de Lomas de Zamora</div>
       </div>
     </div>
-    <div class="tabs">
+    <nav class="tabs" aria-label="Secciones">
       <button class="tab-btn active" onclick="showScreen('directorio')"><i class="ti ti-building"></i> Empresas</button>
       <button class="tab-btn" onclick="showScreen('graduados')"><i class="ti ti-users"></i> Graduados</button>
       <button class="tab-btn" onclick="showScreen('vinculacion')"><i class="ti ti-arrows-exchange"></i> Vinculación</button>
@@ -114,13 +131,20 @@
         <i class="ti ti-user icon-sm"></i>
         <span id="user-name-pill">—</span>
         <span class="admin-badge-pill hidden" id="admin-badge">Admin</span>
-        <button onclick="openEditProfile()" title="Editar mi perfil"><i class="ti ti-pencil icon-sm"></i></button>
+        <button onclick="openEditProfile()" title="Mi perfil y contraseña" aria-label="Mi perfil y contraseña"><i class="ti ti-user-cog icon-sm"></i></button>
         <button onclick="doLogout()">Salir</button>
       </div>
-    </div>
-  </div>
+    </nav>
+  </header>
   <div class="accent-bar"></div>
-  <div class="main">
+  <main class="main" id="contenido" tabindex="-1">
+    <h1 class="sr-only" id="titulo-seccion">Empresas</h1>
+    <div class="aviso-clave hidden" id="aviso-clave" role="status">
+      <i class="ti ti-key"></i>
+      <div><strong>Estás usando una contraseña temporal.</strong> Te recomendamos cambiarla por una propia que solo vos conozcas.</div>
+      <button class="btn-prim btn-sm" onclick="abrirCambioClave()">Cambiar ahora</button>
+      <button class="btn-out btn-sm" onclick="ocultarAvisoClave()">Más tarde</button>
+    </div>
 
     <!-- DIRECTORIO EMPRESAS -->
     <div class="screen active" id="screen-directorio">
@@ -509,7 +533,14 @@
       </div>
     </div>
 
-  </div><!-- /main -->
+  </main><!-- /main -->
+  <footer class="pie">
+    <span>Red de Vinculación Empresarial · Facultad de Ingeniería – UNLZ</span>
+    <span class="pie-links">
+      <a href="#" onclick="event.preventDefault();abrirPrivacidad()">Aviso de privacidad</a>
+      <a href="#" onclick="event.preventDefault();guiaAbrir()">Ayuda</a>
+    </span>
+  </footer>
 </div><!-- /main-app -->
 
 <!-- MODAL: DETALLE EMPRESA -->
@@ -547,15 +578,15 @@
 <div class="modal-overlay" id="modal-perfil">
   <div class="modal modal-sm">
     <div class="modal-header">
-      <h2>Editar mi perfil</h2>
+      <h2>Mi perfil</h2>
       <button class="modal-close" onclick="closeModal('modal-perfil')"><i class="ti ti-x"></i></button>
     </div>
-    <div class="form-group"><label class="form-label">Nombre *</label><input class="form-input" id="pf-nombre" type="text"></div>
-    <div class="form-group"><label class="form-label">Apellido *</label><input class="form-input" id="pf-apellido" type="text"></div>
-    <div class="form-group"><label class="form-label">Teléfono</label><input class="form-input" id="pf-tel" type="text" placeholder="+54 11 1234-5678"></div>
+    <div class="form-group"><label class="form-label" for="pf-nombre">Nombre *</label><input class="form-input" id="pf-nombre" type="text" autocomplete="given-name"></div>
+    <div class="form-group"><label class="form-label" for="pf-apellido">Apellido *</label><input class="form-input" id="pf-apellido" type="text" autocomplete="family-name"></div>
+    <div class="form-group"><label class="form-label" for="pf-tel">Teléfono</label><input class="form-input" id="pf-tel" type="tel" placeholder="+54 11 1234-5678" autocomplete="tel"></div>
     <div class="form-group">
-      <label class="form-label">Email *</label>
-      <input class="form-input" id="pf-email" type="email">
+      <label class="form-label" for="pf-email">Email *</label>
+      <input class="form-input" id="pf-email" type="email" autocomplete="email">
       <p class="hint-text hint-tight">Si lo cambiás, te enviamos un correo de confirmación a la nueva dirección antes de que se aplique.</p>
     </div>
     <div class="action-row">
@@ -564,11 +595,19 @@
     </div>
     <div class="form-msg" id="pf-msg"></div>
     <div class="pf-divider"></div>
+    <h3 class="pf-subtitulo" id="pf-clave-titulo">Cambiar contraseña</h3>
+    <div class="form-group"><label class="form-label" for="pf-clave-actual">Contraseña actual</label><input class="form-input" id="pf-clave-actual" type="password" autocomplete="current-password"></div>
     <div class="form-group">
-      <label class="form-label">Contraseña</label>
-      <p class="hint-text hint-tight">Te enviamos un correo con un link para definir una contraseña nueva.</p>
-      <button class="btn-out" onclick="solicitarCambioPassword()"><i class="ti ti-lock"></i> Cambiar contraseña por email</button>
+      <label class="form-label" for="pf-clave-nueva">Contraseña nueva</label>
+      <input class="form-input" id="pf-clave-nueva" type="password" autocomplete="new-password" aria-describedby="pf-clave-req">
+      <div class="clave-req" id="pf-clave-req" data-clave-para="pf-clave-nueva"></div>
     </div>
+    <div class="form-group"><label class="form-label" for="pf-clave-nueva2">Repetir contraseña nueva</label><input class="form-input" id="pf-clave-nueva2" type="password" autocomplete="new-password"></div>
+    <div class="action-row">
+      <button class="btn-prim" id="pf-clave-btn" onclick="cambiarClavePropia()"><i class="ti ti-lock"></i> Cambiar contraseña</button>
+    </div>
+    <div class="form-msg" id="pf-clave-msg"></div>
+    <p class="hint-text hint-tight">¿No recordás la actual? <a href="#" onclick="event.preventDefault();solicitarCambioPassword()">Te mandamos un link por email</a>.</p>
   </div>
 </div>
 
@@ -616,11 +655,12 @@
     <div class="pf-divider"></div>
     <div class="form-group">
       <label class="form-label">Nueva contraseña <span class="label-note">(opcional, dejar vacío para no cambiarla)</span></label>
-      <input class="form-input" id="eu-pass" type="password" placeholder="••••••••">
+      <input class="form-input" id="eu-pass" type="password" autocomplete="new-password" aria-describedby="eu-pass-req">
+      <div class="clave-req" id="eu-pass-req" data-clave-para="eu-pass"></div>
     </div>
     <div class="form-group">
       <label class="form-label">Confirmar nueva contraseña</label>
-      <input class="form-input" id="eu-pass2" type="password" placeholder="••••••••">
+      <input class="form-input" id="eu-pass2" type="password" autocomplete="new-password">
     </div>
     <div class="action-row">
       <button class="btn-prim" onclick="guardarEdicionUsuario()"><i class="ti ti-check"></i> Guardar</button>
@@ -732,6 +772,58 @@
       <button class="btn-out" onclick="blogCerrarModal('modal-blog-motivo')">Cancelar</button>
     </div>
     <div class="form-msg" id="blog-motivo-msg"></div>
+  </div>
+</div>
+
+<!-- MODAL: AVISO DE PRIVACIDAD (Ley 25.326) -->
+<div class="modal-overlay" id="modal-privacidad">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Aviso de privacidad</h2>
+      <button class="modal-close" onclick="cerrarPrivacidad()" aria-label="Cerrar"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="texto-legal">
+      <p><strong>Responsable:</strong> Facultad de Ingeniería – Universidad Nacional de Lomas de Zamora (FI-UNLZ). Contacto: <a href="mailto:rsmyth@ingenieria.unlz.edu.ar">rsmyth@ingenieria.unlz.edu.ar</a>.</p>
+      <h3>Qué datos guardamos</h3>
+      <ul>
+        <li>De tu cuenta: nombre, apellido, email, teléfono móvil y la fecha en que aceptaste este aviso.</li>
+        <li>De las organizaciones que cargues: los datos que completes (CUIT, dirección, contacto, servicios, necesidades, logo).</li>
+        <li>Lo que publiques: vinculaciones, solicitudes, mensajes de chat, publicaciones, comentarios y archivos del blog.</li>
+        <li>Un registro de actividad (bitácora) con fecha y acción: inicios y cierres de sesión, altas, cambios y moderación. La bitácora nunca guarda tu contraseña ni el texto de tus mensajes o publicaciones.</li>
+      </ul>
+      <h3>Para qué los usamos</h3>
+      <p>Solo para que funcione la red de vinculación entre graduados y organizaciones de la FI-UNLZ: mostrar el directorio, sugerir coincidencias, permitir el contacto y mantener la seguridad. No los vendemos ni los cedemos a terceros con fines comerciales.</p>
+      <h3>Quién ve qué</h3>
+      <ul>
+        <li>Tu nombre y apellido los ven los usuarios con cuenta.</li>
+        <li>Tu <strong>email y teléfono personales</strong> solo los ven: vos, los administradores, y las personas con las que tengas una vinculación (match) o una solicitud <strong>aceptada</strong>.</li>
+        <li>Los datos de contacto de las organizaciones los ven todos los usuarios con cuenta.</li>
+        <li>Los chats los leen solo los usuarios de las dos partes. Los administradores ven que hubo contacto, no el contenido.</li>
+        <li>Nada es visible sin iniciar sesión.</li>
+      </ul>
+      <h3>Tus derechos</h3>
+      <p>Podés pedir <strong>acceso, rectificación, actualización o supresión</strong> de tus datos escribiendo a <a href="mailto:rsmyth@ingenieria.unlz.edu.ar?subject=Datos%20personales%20-%20Red%20de%20Vinculaci%C3%B3n">rsmyth@ingenieria.unlz.edu.ar</a> (Ley 25.326, art. 14 a 16). Respondemos en los plazos de la ley (10 días para acceso; 5 días hábiles para rectificación o supresión). Gran parte de tus datos los podés corregir vos mismo desde <em>Mi perfil</em>.</p>
+      <p><strong>Mensajes de chat:</strong> se conservan aunque se pida la baja de la cuenta, porque pueden servir como prueba ante un reclamo (por ejemplo, un insulto o una agresión). Solo se usan con ese fin.</p>
+      <p>El titular de los datos personales tiene la facultad de ejercer el derecho de acceso a los mismos en forma gratuita a intervalos no inferiores a seis meses, salvo que se acredite un interés legítimo al efecto conforme lo establecido en el artículo 14, inciso 3 de la Ley N° 25.326. La Agencia de Acceso a la Información Pública, en su carácter de Órgano de Control de la Ley N° 25.326, tiene la atribución de atender las denuncias y reclamos que interpongan quienes resulten afectados en sus derechos por incumplimiento de las normas vigentes en materia de protección de datos personales.</p>
+      <h3>Seguridad</h3>
+      <p>Las contraseñas se guardan cifradas y nadie puede verlas. La conexión es cifrada (HTTPS), cada dato tiene permisos por usuario y la sesión se cierra sola tras 30 minutos sin uso.</p>
+      <p class="muted-sm">Versión 1 · noviembre de 2026</p>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: AVISO DE INACTIVIDAD -->
+<div class="modal-overlay" id="modal-inactividad">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2>¿Seguís ahí?</h2>
+      <button class="modal-close" onclick="seguirConectado()" aria-label="Seguir conectado"><i class="ti ti-x"></i></button>
+    </div>
+    <p>Por seguridad, tu sesión se va a cerrar en <strong id="inactividad-seg">60</strong> segundos por inactividad.</p>
+    <div class="action-row">
+      <button class="btn-prim" id="inactividad-seguir" onclick="seguirConectado()">Seguir conectado</button>
+      <button class="btn-out" onclick="doLogout()">Cerrar sesión</button>
+    </div>
   </div>
 </div>
 

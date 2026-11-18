@@ -16,6 +16,13 @@ import { setContext } from './contexto.ts';
 import { contarMisPendientes, initConexionesUI, puedeVerRed, resetConexionesUI } from './ui-conexiones.ts';
 import { resetWebmasterUI } from './ui-webmaster.ts';
 import { iniciarGuia, resetGuia } from './ui-guia.ts';
+import { anunciarPantalla, initA11y } from './a11y.ts';
+import { validarClave, urlSegura } from './seguridad.ts';
+import { detenerSeguridadSesion, iniciarSeguridadSesion, initIndicadoresClave, limpiarCambioClave, revisarClaveTemporal } from './ui-seguridad.ts';
+import '@fontsource/poppins/300.css';
+import '@fontsource/poppins/400.css';
+import '@fontsource/poppins/600.css';
+import '@fontsource/poppins/800.css';
 import { esc, ini, normCuit, isValidCuit, isValidEmail, isValidUrl, buildAddress, friendlyError, normalizeTagKey } from './utils.ts';
 import type { Categoria, ConexionRow, Empresa, EmpresaItem, EmpresaUsuarioRow, ItemTipo, Profile, SolicitudRow } from './types.ts';
 
@@ -180,6 +187,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // se avisa acá arriba del formulario de login; el resto de la pantalla
   // de acceso sigue funcionando igual.
   wireStaticEvents();
+  initA11y();
+  initIndicadoresClave();
   init().catch(e => {
     console.error('Error inicializando la app:', e);
     showAuthMsg('l-msg', friendlyError(e), 'err');
@@ -291,7 +300,11 @@ function renderSectorDatalist(): void {
 // AUTH UI
 // ══════════════════════════════════════════════
 window.authTab = function (t) {
-  document.querySelectorAll('.auth-tab').forEach((el, i) => el.classList.toggle('active', ['login', 'registro'][i] === t));
+  document.querySelectorAll('.auth-tab').forEach((el, i) => {
+    const activa = ['login', 'registro'][i] === t;
+    el.classList.toggle('active', activa);
+    el.setAttribute('aria-selected', String(activa));
+  });
   document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
   $('af-' + t).classList.add('active');
 };
@@ -322,8 +335,10 @@ window.doRegister = async function () {
   if (!nombre || !apellido) { showAuthMsg('r-msg', 'Nombre y apellido son obligatorios.', 'err'); return; }
   if (!email || !isValidEmail(email)) { showAuthMsg('r-msg', 'Ingresá un email válido.', 'err'); return; }
   if (!tel) { showAuthMsg('r-msg', 'El teléfono móvil es obligatorio.', 'err'); return; }
-  if (!pass || pass.length < 8) { showAuthMsg('r-msg', 'La contraseña debe tener al menos 8 caracteres.', 'err'); return; }
+  const problemaClave = validarClave(pass);
+  if (problemaClave) { showAuthMsg('r-msg', problemaClave, 'err'); return; }
   if (pass !== pass2) { showAuthMsg('r-msg', 'Las contraseñas no coinciden.', 'err'); return; }
+  if (!$input('r-privacidad').checked) { showAuthMsg('r-msg', 'Para crear la cuenta tenés que aceptar el aviso de privacidad.', 'err'); return; }
 
   setBusy('r-btn', true);
   try {
@@ -353,12 +368,23 @@ window.doRegister = async function () {
 };
 
 window.doLogout = async function () {
+  await cerrarSesion('sesion_cierre');
+};
+
+// Cierre de sesión (a pedido o por inactividad). Siempre limpia la
+// pantalla, aunque falle la red.
+async function cerrarSesion(motivo: 'sesion_cierre' | 'sesion_inactividad'): Promise<void> {
+  detenerSeguridadSesion();
   if (leafletMap) { leafletMap.remove(); leafletMap = null; mapMarkers = []; }
-  await Auth.registrarEvento('sesion_cierre');
-  await Auth.signOut();
+  await Auth.registrarEvento(motivo);
+  try { await Auth.signOut(); } catch (e) { console.error('No se pudo cerrar la sesión en el servidor:', e); }
   currentProfile = null;
   showAuthScreen();
-};
+  if (motivo === 'sesion_inactividad') {
+    window.authTab('login');
+    showAuthMsg('l-msg', 'Cerramos tu sesión porque pasaron 30 minutos sin actividad. Volvé a ingresar para seguir.', 'err');
+  }
+}
 
 window.openForgotPassword = function () {
   document.querySelectorAll('.auth-tab').forEach(el => el.classList.remove('active'));
@@ -383,7 +409,8 @@ window.doForgotPassword = async function () {
 window.doResetPassword = async function () {
   const p1 = $input('rp-pass').value;
   const p2 = $input('rp-pass2').value;
-  if (!p1 || p1.length < 8) { showAuthMsg('rp-msg', 'La contraseña debe tener al menos 8 caracteres.', 'err'); return; }
+  const problemaClave = validarClave(p1);
+  if (problemaClave) { showAuthMsg('rp-msg', problemaClave, 'err'); return; }
   if (p1 !== p2) { showAuthMsg('rp-msg', 'Las contraseñas no coinciden.', 'err'); return; }
   setBusy('rp-btn', true);
   try {
@@ -406,12 +433,15 @@ function setBusy(btnId: string, busy: boolean): void {
 function showAuthMsg(id: string, msg: string, type: 'err' | 'ok'): void {
   const el = $(id);
   el.textContent = msg; el.style.display = 'block';
-  el.style.color = type === 'err' ? '#c62828' : '#2e7d32';
+  el.classList.toggle('auth-msg--err', type === 'err');
+  el.classList.toggle('auth-msg--ok', type === 'ok');
 }
 
 function showAuthScreen(): void {
+  detenerSeguridadSesion();
   $('auth-wrap').style.display = 'flex';
   $('main-app').style.display = 'none';
+  document.title = 'Red de Vinculación Empresarial – FI-UNLZ';
   $input('l-pass').value = '';
   // Que no quede nada del usuario anterior (chat abierto, bitácora, guía).
   resetConexionesUI();
@@ -463,6 +493,8 @@ async function enterAppImpl(): Promise<void> {
   }
   if (recoveryInProgress) { currentProfile = null; showAuthScreen(); return; } // llegó el link de reset mientras cargaba
   window.showScreen('directorio');
+  iniciarSeguridadSesion({ email: () => currentProfile?.email ?? null, cerrarSesion: () => cerrarSesion('sesion_inactividad') });
+  revisarClaveTemporal().catch(() => {});
   iniciarGuia();
 }
 
@@ -554,12 +586,19 @@ function contactButtonsHtml(org: Empresa): string {
 // ══════════════════════════════════════════════
 window.showScreen = function (name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => { b.classList.remove('active'); b.removeAttribute('aria-current'); });
   const el = document.getElementById('screen-' + name);
   if (el) el.classList.add('active');
   const names = ['directorio', 'graduados', 'vinculacion', 'blog', 'mapa', 'mis-empresas', 'registrar', 'admin', 'webmaster'];
   const idx = names.indexOf(name);
-  if (idx >= 0) { const btns = document.querySelectorAll('.tab-btn'); if (btns[idx]) btns[idx].classList.add('active'); }
+  if (idx >= 0) {
+    const btns = document.querySelectorAll('.tab-btn');
+    if (btns[idx]) {
+      btns[idx].classList.add('active');
+      btns[idx].setAttribute('aria-current', 'page');
+      anunciarPantalla((btns[idx].textContent || '').trim());
+    }
+  }
   if (name === 'directorio') window.renderDir();
   if (name === 'graduados') window.renderGraduados();
   if (name === 'vinculacion') window.renderVin();
@@ -665,8 +704,9 @@ window.renderGraduados = function () {
         <div class="user-avatar">${esc((u.nombre?.[0] || '') + (u.apellido?.[0] || ''))}</div>
         <div>
           <div class="user-name">${esc(u.nombre + ' ' + u.apellido)} ${isSelf ? '<span class="badge-self">Yo</span>' : ''}</div>
-          <div class="user-contact"><i class="ti ti-mail"></i>${esc(u.email || '—')}</div>
+          ${u.email ? `<div class="user-contact"><i class="ti ti-mail"></i>${esc(u.email)}</div>` : ''}
           ${u.tel ? `<div class="user-contact"><i class="ti ti-phone"></i>${esc(u.tel)}</div>` : ''}
+          ${!u.email && !u.tel ? '<div class="user-contact user-contact--privado"><i class="ti ti-lock"></i>Contacto visible al vincularse</div>' : ''}
         </div>
       </div>
       <div class="user-companies">
@@ -887,7 +927,7 @@ window.openDetail = function (id) {
     ${(o.emailOrg || o.tel || o.web) ? `<div class="dsec"><div class="dsec-title">Contacto</div>
       ${o.emailOrg ? `<div class="drow"><i class="ti ti-mail"></i>${esc(o.emailOrg)}</div>` : ''}
       ${o.tel ? `<div class="drow"><i class="ti ti-phone"></i>${esc(o.tel)}</div>` : ''}
-      ${o.web ? `<div class="drow"><i class="ti ti-world"></i><a href="${esc(o.web)}" target="_blank" rel="noopener noreferrer" class="link-plain">${esc(o.web)}</a></div>` : ''}
+      ${urlSegura(o.web) ? `<div class="drow"><i class="ti ti-world"></i><a href="${esc(urlSegura(o.web))}" target="_blank" rel="noopener noreferrer" class="link-plain">${esc(o.web)}<span class="sr-only"> (se abre en otra pestaña)</span></a></div>` : (o.web ? `<div class="drow"><i class="ti ti-world"></i>${esc(o.web)}</div>` : '')}
       <div class="detail-contact-actions">${contactButtonsHtml(o)}</div>
     </div>` : ''}
 
@@ -1008,6 +1048,7 @@ window.openEditProfile = function () {
   $input('pf-tel').value = currentProfile.tel || '';
   $input('pf-email').value = currentProfile.email || '';
   $('pf-msg').style.display = 'none';
+  limpiarCambioClave();
   $('modal-perfil').classList.add('open');
 };
 
@@ -1039,7 +1080,7 @@ window.guardarPerfil = async function () {
     if (dup.tel) throw new Error('Ya existe otro usuario con ese teléfono móvil.');
 
     const updated = await Auth.updateOwnProfile({ nombre, apellido, tel });
-    currentProfile = { ...currentProfile, ...updated };
+    currentProfile = { ...currentProfile, ...updated, tel };
     $('user-name-pill').textContent = currentProfile.nombre || currentProfile.email || '—';
 
     let emailPendiente = false;
@@ -1065,7 +1106,7 @@ window.guardarPerfil = async function () {
 
 window.solicitarCambioPassword = async function () {
   if (!currentProfile?.email) return;
-  const msg = $('pf-msg');
+  const msg = $('pf-clave-msg');
   try {
     await Auth.resetPasswordForEmail(currentProfile.email);
     msg.textContent = '✓ Te enviamos un correo a ' + currentProfile.email + ' con un link para definir una nueva contraseña.';
@@ -1644,8 +1685,9 @@ window.guardarEdicionUsuario = async function () {
   if (!email || !isValidEmail(email)) {
     msg.textContent = 'Ingresá un email válido.'; msg.className = 'form-msg err'; msg.style.display = 'block'; return;
   }
-  if (pass && pass.length < 8) {
-    msg.textContent = 'La contraseña debe tener al menos 8 caracteres.'; msg.className = 'form-msg err'; msg.style.display = 'block'; return;
+  const problemaClave = pass ? validarClave(pass) : null;
+  if (problemaClave) {
+    msg.textContent = problemaClave; msg.className = 'form-msg err'; msg.style.display = 'block'; return;
   }
   if (pass !== pass2) {
     msg.textContent = 'Las contraseñas no coinciden.'; msg.className = 'form-msg err'; msg.style.display = 'block'; return;
