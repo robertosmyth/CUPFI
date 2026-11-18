@@ -12,6 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@fontsource/poppins": "^5.1.0",
     "@supabase/supabase-js": "^2.110.5",
     "@tabler/icons-webfont": "^3.44.0",
     "leaflet": "^1.9.4"

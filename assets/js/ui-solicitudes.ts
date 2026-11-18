@@ -320,7 +320,9 @@ function tarjetaHtml(s: SolicitudRow, lado: 'origen' | 'destino'): string {
   let contactoPersona = '';
   if (lado === 'destino' && s.origen_persona_id) {
     const p = c.getProfileById(s.origen_persona_id);
-    if (p) contactoPersona = `<div class="muted-sm"><i class="ti ti-user"></i> ${esc(p.email || '')}${p.tel ? ' · ' + esc(p.tel) : ''}</div>`;
+    // El email y el teléfono personales recién se ven al aceptar (sql/015).
+    if (p && (p.email || p.tel)) contactoPersona = `<div class="muted-sm"><i class="ti ti-user"></i> ${esc([p.email, p.tel].filter(Boolean).join(' · '))}</div>`;
+    else if (p && s.estado === 'pendiente') contactoPersona = '<div class="muted-sm"><i class="ti ti-lock"></i> Su email y teléfono se muestran al aceptar.</div>';
   }
   let acciones = '';
   if (s.estado === 'pendiente' && lado === 'destino') {

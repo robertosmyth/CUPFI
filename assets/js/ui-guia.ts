@@ -113,7 +113,19 @@ const FAQ: Array<{ id: string; pregunta: string; respuesta: string; pantalla?: s
   },
   {
     id: 'perfil', pregunta: '¿Cómo cambio mis datos o mi contraseña?',
-    respuesta: 'Con el botón del lápiz junto a tu nombre, arriba a la derecha. Ahí podés editar nombre, teléfono y email, y pedir un correo para cambiar la contraseña.',
+    respuesta: 'Con el botón <strong>Mi perfil</strong> (el ícono junto a tu nombre, arriba a la derecha). Ahí editás nombre, teléfono y email, y cambiás la contraseña escribiendo la actual y la nueva. Si no recordás la actual, te mandamos un link por email.',
+  },
+  {
+    id: 'clave', pregunta: '¿Qué contraseña puedo usar?',
+    respuesta: 'Tiene que tener al menos 8 caracteres, con una mayúscula, una minúscula, un número y un símbolo (por ejemplo ! ? # $). Mientras la escribís ves qué requisito falta y qué tan segura es. Usá una que no uses en otros sitios. Si te dieron una <strong>contraseña temporal</strong>, cambiala desde el aviso amarillo o desde <em>Mi perfil</em>.',
+  },
+  {
+    id: 'datos', pregunta: '¿Quién ve mi email y mi teléfono?',
+    respuesta: 'Solo vos, los administradores y las personas con las que tengas una vinculación o una solicitud <strong>aceptada</strong>. El resto de los usuarios ve tu nombre y tus empresas. Todo el detalle está en el <a href="#" onclick="event.preventDefault();abrirPrivacidad()">aviso de privacidad</a>.',
+  },
+  {
+    id: 'sesion', pregunta: '¿Por qué se cerró mi sesión?',
+    respuesta: 'Por seguridad, la sesión se cierra sola después de <strong>30 minutos sin usar la página</strong>. Un minuto antes te avisamos para que puedas seguir conectado. Volvé a ingresar y seguís donde estabas.',
   },
   {
     id: 'contacto', pregunta: '¿Cómo contacto a CUPFI?',

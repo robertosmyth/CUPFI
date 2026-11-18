@@ -71,6 +71,10 @@ interface ErrorLike {
 // Errores que lanzan a propósito las funciones de sql/012 (raise exception
 // 'CODIGO'), con el texto que ve el usuario.
 const MENSAJES_012: Array<[string, string]> = [
+  // sql/015 (normas de seguridad)
+  ['PERFIL_EMAIL_NO_COINCIDE', 'El email se cambia desde "Mi perfil": te enviamos un correo para confirmarlo.'],
+  ['empresas_web_http', 'El sitio web debe empezar con http:// o https://'],
+  ['empresas_logo_https', 'El logo no es válido. Volvé a subir la imagen.'],
   // sql/013 (solicitudes y carga rápida). Van primero: algunos contienen
   // códigos más cortos de 012 (por ejemplo SOLICITUD_YA_ACEPTADA contiene
   // YA_ACEPTADA) y gana el primero que coincide.
@@ -175,6 +179,10 @@ export function friendlyError(error: unknown): string {
   if (/Invalid login credentials/i.test(msg)) return 'Email o contraseña incorrectos.';
   if (/User already registered/i.test(msg)) return 'Ya existe una cuenta con ese email.';
   if (/Password should be at least/i.test(msg)) return 'La contraseña debe tener al menos 8 caracteres.';
+  if (/Password should contain|weak[_ ]password|Password is known to be weak|pwned/i.test(msg) || e.code === 'weak_password') {
+    if (/pwned|known to be weak|leaked/i.test(msg)) return 'Esa contraseña apareció en filtraciones públicas de datos. Elegí otra.';
+    return 'La contraseña debe tener al menos 8 caracteres, con mayúscula, minúscula, número y símbolo.';
+  }
   if (/different from the old password/i.test(msg) || e.code === 'same_password') return 'La contraseña nueva tiene que ser distinta de la anterior.';
   if (/Auth session missing/i.test(msg)) return 'La sesión venció. Volvé a iniciar sesión (o pedí un nuevo link para restablecer la contraseña).';
   if (/Email not confirmed/i.test(msg)) return 'Confirmá tu email antes de iniciar sesión (revisá tu bandeja de entrada).';
