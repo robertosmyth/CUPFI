@@ -3,7 +3,7 @@
 // (ui-conexiones.ts, ui-webmaster.ts, ui-guia.ts). main.ts es el dueño del
 // estado; los módulos lo leen a través de este objeto en vez de duplicarlo.
 // ══════════════════════════════════════════════
-import type { Categoria, ConexionRow, Empresa, Profile, SolicitudRow } from './types.ts';
+import type { Categoria, ConexionRow, Empresa, Profile, SolicitudRow, Sugerencia } from './types.ts';
 
 export interface AppContext {
   readonly orgs: Empresa[];
@@ -11,6 +11,10 @@ export interface AppContext {
   readonly categorias: Categoria[];
   readonly conexiones: ConexionRow[];
   readonly solicitudes: SolicitudRow[]; // las visibles para el usuario (RLS)
+  // vinculaciones posibles: las de mis empresas (o toda la red si soy admin)
+  readonly sugerencias: Sugerencia[];
+  // true si vienen de la base (sql/017); si no, sugerencias es toda la red
+  readonly sugerenciasEnBase: boolean;
   readonly currentProfile: Profile | null;
   // ids de las empresas de las que el usuario actual es usuario
   misEmpresas(): Set<number>;

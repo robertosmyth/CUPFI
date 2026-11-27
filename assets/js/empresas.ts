@@ -2,6 +2,7 @@
 // CRUD de empresas + subida de logos (Supabase real)
 // Mapea entre camelCase (JS) y snake_case (columnas Postgres)
 // ══════════════════════════════════════════════
+import { traerTodo } from './paginar.ts';
 import { getSupabase } from './supabaseClient.ts';
 import type {
   Categoria, CategoriaRow, Database, Empresa, EmpresaFields, EmpresaInput, EmpresaItem, EmpresaItemRow,
@@ -77,8 +78,8 @@ function toDb(o: EmpresaInput): Partial<EmpresaRow> {
 
 export async function listEmpresas(): Promise<Empresa[]> {
   const supabase = await getSupabase();
-  const { data, error } = await supabase.from('empresas').select('*').order('created_at', { ascending: false });
-  if (error) throw error;
+  const data = await traerTodo<EmpresaRow>((d, h) => supabase.from('empresas').select('*')
+    .order('created_at', { ascending: false }).order('id', { ascending: false }).range(d, h));
   return data.map(fromDb);
 }
 
@@ -127,9 +128,16 @@ export async function reasignarDueno(empresaId: number, userId: string | null): 
 // Trae todas las asociaciones empresa↔usuario adicionales (además del administrador principal).
 export async function listAsociaciones(): Promise<EmpresaUsuarioRow[]> {
   const supabase = await getSupabase();
-  const { data, error } = await supabase.from('empresa_usuarios').select('*');
+  return traerTodo<EmpresaUsuarioRow>((d, h) => supabase.from('empresa_usuarios').select('*')
+    .order('empresa_id').order('user_id').range(d, h));
+}
+
+// ¿El CUIT (sin importar guiones ni espacios) está libre? (sql/017)
+export async function cuitDisponible(cuit: string, excluirId: number | null): Promise<boolean> {
+  const supabase = await getSupabase();
+  const { data, error } = await supabase.rpc('cuit_disponible', { p_cuit: cuit, p_excluir: excluirId });
   if (error) throw error;
-  return data;
+  return data !== false;
 }
 
 export async function asignarUsuario(empresaId: number, userId: string): Promise<void> {
@@ -154,8 +162,7 @@ function itemFromDb(r: EmpresaItemRow): EmpresaItem {
 // Todos los ítems de todas las empresas, agrupados por empresa.
 export async function listItems(): Promise<Map<number, EmpresaItem[]>> {
   const supabase = await getSupabase();
-  const { data, error } = await supabase.from('empresa_items').select('*').order('id', { ascending: true });
-  if (error) throw error;
+  const data = await traerTodo<EmpresaItemRow>((d, h) => supabase.from('empresa_items').select('*').order('id', { ascending: true }).range(d, h));
   const map = new Map<number, EmpresaItem[]>();
   for (const r of data) {
     if (!map.has(r.empresa_id)) map.set(r.empresa_id, []);
@@ -203,8 +210,8 @@ function categoriaFromDb(r: CategoriaRow): Categoria {
 
 export async function listCategorias(): Promise<Categoria[]> {
   const supabase = await getSupabase();
-  const { data, error } = await supabase.from('categorias').select('*').order('orden', { ascending: true }).order('nombre', { ascending: true });
-  if (error) throw error;
+  const data = await traerTodo<CategoriaRow>((d, h) => supabase.from('categorias').select('*')
+    .order('orden', { ascending: true }).order('nombre', { ascending: true }).order('id', { ascending: true }).range(d, h));
   return data.map(categoriaFromDb);
 }
 

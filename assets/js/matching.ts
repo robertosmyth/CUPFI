@@ -86,6 +86,33 @@ export function calcularSugerencias(orgs: Empresa[], categorias: Categoria[]): S
   return out;
 }
 
+// Sugerencias calculadas en la base (sugerencias_conexion, sql/017): mismas
+// reglas y mismo orden que calcularSugerencias, pero sin recorrer toda la
+// red en el navegador. Las filas que refieren a una empresa o categoría que
+// no está en memoria se descartan.
+export interface SugerenciaBase {
+  necesita_id: number; ofrece_id: number; categoria_id: number;
+  pares: ParCoincidencia[]; nivel: NivelCoincidencia;
+}
+export function sugerenciasDesdeBase(filas: SugerenciaBase[], orgs: Empresa[], categorias: Categoria[]): Sugerencia[] {
+  const orgById = new Map(orgs.map(o => [o.id, o]));
+  const catById = new Map(categorias.map(c => [c.id, c]));
+  const out: Sugerencia[] = [];
+  for (const f of filas) {
+    const necesita = orgById.get(f.necesita_id);
+    const ofrece = orgById.get(f.ofrece_id);
+    const categoria = catById.get(f.categoria_id);
+    if (!necesita || !ofrece || !categoria) continue;
+    out.push({
+      key: claveConexion(necesita.id, ofrece.id, categoria.id),
+      necesita, ofrece, categoria,
+      pares: f.pares.map(p => ({ necesidad: p.necesidad || '', oferta: p.oferta || '', nivel: p.nivel })),
+      nivel: f.nivel,
+    });
+  }
+  return out;
+}
+
 // De qué lado de la conexión está el usuario (según las empresas de las
 // que es usuario). null si no es usuario de ninguna de las dos.
 export function ladoDe(necesitaId: number, ofreceId: number, misEmpresas: ReadonlySet<number>): LadoConexion | null {

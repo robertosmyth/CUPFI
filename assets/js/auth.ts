@@ -2,6 +2,7 @@
 // AUTENTICACIÓN (Supabase Auth real, sin passwords en el cliente)
 // ══════════════════════════════════════════════
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
+import { traerTodo } from './paginar.ts';
 import { getSupabase } from './supabaseClient.ts';
 import type { CheckProfileDuplicatesResult, PerfilPublico, Profile } from './types.ts';
 
@@ -45,16 +46,17 @@ type ContactoRow = { id: string; email: string | null; tel: string | null };
 // tiene sql/015, se leen como antes (todas las columnas eran visibles).
 export async function listContactos(): Promise<ContactoRow[]> {
   const supabase = await getSupabase();
-  const { data, error } = await supabase.rpc('perfiles_contacto', {});
-  if (!error) return (data || []) as ContactoRow[];
-  if (!/perfiles_contacto|PGRST202|function .* does not exist|Could not find the function/i.test(`${error.code} ${error.message}`)) throw error;
-  const viejo = await supabase.from('profiles').select('id, email, tel');
-  if (viejo.error) throw viejo.error;
-  return (viejo.data || []) as ContactoRow[];
+  try {
+    return await traerTodo<ContactoRow>((d, h) => supabase.rpc('perfiles_contacto', {}).order('id').range(d, h) as never);
+  } catch (error) {
+    const e = error as { code?: string; message?: string };
+    if (!/perfiles_contacto|PGRST202|function .* does not exist|Could not find the function/i.test(`${e.code} ${e.message}`)) throw error;
+  }
+  return traerTodo<ContactoRow>((d, h) => supabase.from('profiles').select('id, email, tel').order('id').range(d, h));
 }
 
-function conContacto<T extends { id: string }>(perfil: T, contactos: ContactoRow[]): T & { email: string | null; tel: string | null } {
-  const c = contactos.find(x => x.id === perfil.id);
+function conContacto<T extends { id: string }>(perfil: T, contactos: ContactoRow[] | Map<string, ContactoRow>): T & { email: string | null; tel: string | null } {
+  const c = contactos instanceof Map ? contactos.get(perfil.id) : contactos.find(x => x.id === perfil.id);
   return { ...perfil, email: c?.email ?? null, tel: c?.tel ?? null };
 }
 
@@ -144,12 +146,13 @@ export async function getCurrentProfile(): Promise<Profile | null> {
 // Todos los perfiles visibles (requiere estar autenticado, ver RLS)
 export async function listProfiles(): Promise<Profile[]> {
   const supabase = await getSupabase();
-  const [{ data, error }, contactos] = await Promise.all([
-    supabase.from('profiles').select(PERFIL_COLS).order('created_at', { ascending: true }),
+  const [perfiles, contactos] = await Promise.all([
+    traerTodo<Profile>((d, h) => supabase.from('profiles').select(PERFIL_COLS)
+      .order('created_at', { ascending: true }).order('id', { ascending: true }).range(d, h) as never),
     listContactos(),
   ]);
-  if (error) throw error;
-  return (data as Profile[]).map(p => conContacto(p, contactos));
+  const porId = new Map(contactos.map(c => [c.id, c]));
+  return perfiles.map(p => conContacto(p, porId));
 }
 
 // Cambia el rol de un usuario. Solo funciona si quien llama ya es admin:

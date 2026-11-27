@@ -199,7 +199,7 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:#f5f4fc;}
 /* Fuerza de la coincidencia */
 .match-strength{font-size:9px;padding:1px 7px;border-radius:8px;font-weight:600;white-space:nowrap;}
 .match-strength--strong{background:#e8f5e9;color:#2e7d32;}
-.match-strength--weak{background:#fff3e0;color:#e65100;}
+.match-strength--weak{background:#fff3e0;color:#a33a00;}
 
 /* ADMIN */
 .admin-table{width:100%;border-collapse:collapse;background:#fff;border-radius:6px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06);margin-bottom:1.5rem;}
@@ -775,3 +775,4 @@ body.sin-scroll{overflow:hidden;}
 
 /* SECTORES (webmaster) */
 .wm-orden{width:70px;}
+.chat-anteriores{align-self:center;font-size:12px;padding:4px 12px;}

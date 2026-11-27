@@ -3,6 +3,7 @@
 // pedirle a una empresa que lo tiene. Toda escritura pasa por funciones
 // de la base, que validan quién puede mandar, responder y leer qué.
 // ══════════════════════════════════════════════
+import { traerTodo } from './paginar.ts';
 import { getSupabase } from './supabaseClient.ts';
 import type {
   SolicitudAccion, SolicitudEnvioResultado, SolicitudMensajeRow, SolicitudResumenRow, SolicitudRow, SolicitudTipo,
@@ -12,9 +13,8 @@ import type {
 // recibidas por sus empresas, o todas si es webmaster).
 export async function listSolicitudes(): Promise<SolicitudRow[]> {
   const supabase = await getSupabase();
-  const { data, error } = await supabase.from('solicitudes').select('*').order('updated_at', { ascending: false });
-  if (error) throw error;
-  return data;
+  return traerTodo<SolicitudRow>((d, h) => supabase.from('solicitudes').select('*')
+    .order('updated_at', { ascending: false }).order('id', { ascending: false }).range(d, h));
 }
 
 export interface EnviarSolicitudArgs {
@@ -45,12 +45,22 @@ export async function responderSolicitud(id: number, accion: SolicitudAccion): P
   return data as SolicitudRow;
 }
 
-export async function listMensajes(solicitudId: number): Promise<SolicitudMensajeRow[]> {
+// Los `limite` mensajes más recientes, en orden de lectura (ver conexiones.ts).
+export async function listMensajes(solicitudId: number, limite = 100): Promise<{ msgs: SolicitudMensajeRow[]; hayMas: boolean }> {
   const supabase = await getSupabase();
   const { data, error } = await supabase.from('solicitud_mensajes').select('*')
-    .eq('solicitud_id', solicitudId).order('created_at', { ascending: true }).limit(500);
+    .eq('solicitud_id', solicitudId).order('created_at', { ascending: false }).order('id', { ascending: false }).limit(limite + 1);
   if (error) throw error;
-  return data;
+  return { msgs: data.slice(0, limite).reverse(), hayMas: data.length > limite };
+}
+
+// El primer mensaje (el que acompaña la solicitud).
+export async function primerMensaje(solicitudId: number): Promise<SolicitudMensajeRow | null> {
+  const supabase = await getSupabase();
+  const { data, error } = await supabase.from('solicitud_mensajes').select('*')
+    .eq('solicitud_id', solicitudId).order('created_at', { ascending: true }).order('id', { ascending: true }).limit(1);
+  if (error) throw error;
+  return data[0] ?? null;
 }
 
 export async function enviarMensaje(solicitudId: number, contenido: string): Promise<SolicitudMensajeRow> {

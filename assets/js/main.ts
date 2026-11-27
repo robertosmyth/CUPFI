@@ -11,7 +11,7 @@ import * as Webmaster from './webmaster.ts';
 import * as Solicitudes from './solicitudes.ts';
 import { initSolicitudesUI } from './ui-solicitudes.ts';
 import { initBlogUI, resetBlogUI } from './ui-blog.ts';
-import { calcularSugerencias, etiquetaItem } from './matching.ts';
+import { calcularSugerencias, etiquetaItem, sugerenciasDesdeBase } from './matching.ts';
 import { setContext } from './contexto.ts';
 import { contarMisPendientes, initConexionesUI, puedeVerRed, resetConexionesUI } from './ui-conexiones.ts';
 import { resetWebmasterUI } from './ui-webmaster.ts';
@@ -29,7 +29,7 @@ import '@fontsource/poppins/400.css';
 import '@fontsource/poppins/600.css';
 import '@fontsource/poppins/800.css';
 import { esc, ini, normCuit, isValidCuit, isValidEmail, isValidUrl, buildAddress, friendlyError, normalizeTagKey } from './utils.ts';
-import type { Categoria, ConexionRow, Empresa, EmpresaItem, EmpresaUsuarioRow, ItemTipo, Profile, SolicitudRow } from './types.ts';
+import type { Categoria, ConexionRow, Empresa, EmpresaItem, EmpresaUsuarioRow, ItemTipo, Profile, SolicitudRow, Sugerencia } from './types.ts';
 
 // Handlers expuestos a los `onclick`/`onchange`/`onkeydown` inline del HTML
 // (ver index.html). Se mantiene ese patrón tal cual estaba en JS: es un
@@ -124,6 +124,10 @@ let conexiones: ConexionRow[] = []; // las visibles para el usuario (RLS)
 let solicitudes: SolicitudRow[] = []; // las visibles para el usuario (RLS, sql/013)
 let formItems: EmpresaItem[] = [];  // ofertas/necesidades del formulario de empresa
 let asociaciones: EmpresaUsuarioRow[] = []; // filas de empresa_usuarios (ver sql/historial/009)
+let sugerencias: Sugerencia[] = []; // vinculaciones posibles de mis empresas (sql/017)
+let sugerenciasEnBase = false; // false = la base todavía no tiene sql/017: se calculan acá
+let totalRed: number | null = null; // admin: cuántas hay en toda la red
+let perfilPorId = new Map<string, Profile>();
 let editingId: number | null = null;
 let editReturnScreen: string | null = null; // pantalla a la que volver después de editar (no de agregar)
 let currentLogoFile: File | null = null; // File real seleccionado (se sube recién al guardar)
@@ -164,6 +168,8 @@ setContext({
   get categorias() { return categorias; },
   get conexiones() { return conexiones; },
   get solicitudes() { return solicitudes; },
+  get sugerencias() { return sugerencias; },
+  get sugerenciasEnBase() { return sugerenciasEnBase; },
   get currentProfile() { return currentProfile; },
   misEmpresas: () => new Set(currentProfile ? orgs.filter(o => esUsuarioDeEmpresa(o, currentProfile!.id)).map(o => o.id) : []),
   refresh: () => refreshData(),
@@ -491,22 +497,37 @@ async function enterAppImpl(): Promise<void> {
 
 async function refreshData(): Promise<void> {
   limpiarCacheDirectorio(); // lo buscado antes puede haber cambiado
-  const [e, p, a, items, cats, cons, sols] = await Promise.all([
+  const [e, p, a, items, cats, cons, sols, sug] = await Promise.all([
     Empresas.listEmpresas(), Auth.listProfiles(), Empresas.listAsociaciones(),
     Empresas.listItems(), Empresas.listCategorias(), Conexiones.listConexiones(),
     // Si la base todavía no tiene sql/013, la app sigue andando sin solicitudes.
     Solicitudes.listSolicitudes().catch(err => { console.warn('Solicitudes no disponibles:', friendlyError(err)); return [] as SolicitudRow[]; }),
+    // Si la base todavía no tiene sql/017, se calculan acá como antes.
+    Conexiones.listSugerencias().catch(err => { console.warn('Sugerencias en el navegador:', friendlyError(err)); return null; }),
   ]);
+  // Admin: el total de la red se pide aparte (solo el número).
+  totalRed = puedeVerRed() && sug
+    ? await Conexiones.listSugerencias({ red: true, solo_total: true }).then(r => r.total).catch(() => null)
+    : null;
   orgs = e;
   profiles = p;
+  perfilPorId = new Map(p.map(x => [x.id, x]));
   asociaciones = a;
   categorias = cats;
   conexiones = cons;
   solicitudes = sols;
+  const usuariosPorEmpresa = new Map<number, string[]>();
+  for (const x of a) {
+    if (!usuariosPorEmpresa.has(x.empresa_id)) usuariosPorEmpresa.set(x.empresa_id, []);
+    usuariosPorEmpresa.get(x.empresa_id)!.push(x.user_id);
+  }
   orgs.forEach(o => {
-    o.usuarios = usuariosDeEmpresa(o);
+    o.usuarios = [...new Set([...(o.uid ? [o.uid] : []), ...(usuariosPorEmpresa.get(o.id) || [])])];
     o.items = items.get(o.id) || [];
   });
+  sugerencias = sug ? sugerenciasDesdeBase(sug.items, orgs, categorias) : calcularSugerencias(orgs, categorias);
+  sugerenciasEnBase = !!sug;
+  if (!sug && puedeVerRed()) totalRed = sugerencias.length;
 }
 
 // "Categoría › Subcategoría" de un ítem (o "?" si su categoría ya no existe).
@@ -537,7 +558,7 @@ function esUsuarioDeEmpresa(o: Empresa, userId: string | null | undefined): bool
 // ══════════════════════════════════════════════
 // HELPERS
 // ══════════════════════════════════════════════
-function getProfileById(uid: string | null | undefined): Profile | undefined { return profiles.find(u => u.id === uid); }
+function getProfileById(uid: string | null | undefined): Profile | undefined { return uid ? perfilPorId.get(uid) : undefined; }
 
 // Clases de tamaño (ver assets/css/style.css): 42px es el tamaño por
 // defecto de .avatar/.org-logo-img, así que solo hace falta un modificador
@@ -631,7 +652,7 @@ window.renderDir = function () {
   // empresas (las coincidencias entre otras empresas son privadas).
   const verRed = puedeVerRed();
   $('stat-matches-label').textContent = verRed ? 'Vinculaciones posibles (red)' : 'Mis vinculaciones pendientes';
-  $('stat-matches').textContent = String(verRed ? calcularSugerencias(orgs, categorias).length : contarMisPendientes());
+  $('stat-matches').textContent = verRed ? (totalRed ?? 0).toLocaleString('es-AR') : String(contarMisPendientes());
 };
 
 // Tarjeta de organización, compartida entre el Directorio y "Mis empresas".
@@ -792,14 +813,28 @@ window.renderMias = function () {
 // ══════════════════════════════════════════════
 // DETALLE DE EMPRESA
 // ══════════════════════════════════════════════
+function vinculacionesDetalleHtml(mx: Sugerencia[], total = mx.length): string {
+  if (!mx.length) return '';
+  return `<div class="dsec"><div class="dsec-title">Vinculaciones posibles${total > mx.length ? ` <span class="muted-sm">(las primeras ${mx.length} de ${total.toLocaleString('es-AR')})</span>` : ''}</div>
+      ${mx.map(m => `<div class="match-card">
+        <div class="match-label"><i class="ti ti-arrows-exchange"></i>puede cubrir su necesidad de <strong>${esc(m.categoria.nombre)}</strong> ${m.nivel === 'exacta' ? '<span class="match-strength match-strength--strong">Coincidencia exacta</span>' : '<span class="match-strength match-strength--weak">Misma categoría</span>'}</div>
+        <div class="match-name" onclick="closeModal('modal-detalle');setTimeout(()=>openDetail(${m.ofrece.id}),80)">${esc(m.ofrece.nombre)}</div>
+        <div class="muted-sm">${esc(m.ofrece.referente)}</div>
+        ${m.pares.map(par => `<div class="match-detail">${esc(par.necesidad || 'Sin subcategoría')} ↔ <span class="match-highlight">${esc(par.oferta || 'Sin subcategoría')}</span></div>`).join('')}
+        <div class="match-contact">${contactButtonsHtml(m.ofrece)}</div>
+      </div>`).join('')}
+    </div>`;
+}
+
 window.openDetail = function (id) {
   const o = orgs.find(x => x.id === id);
   if (!o) return;
   // Quién puede cubrir las necesidades de esta empresa: solo para sus
   // propios usuarios, admins y webmasters (es información privada).
-  const mx = (puedeVerRed() || esUsuarioDeEmpresa(o, currentProfile!.id))
-    ? calcularSugerencias(orgs, categorias).filter(s => s.necesita.id === o.id)
-    : [];
+  const esMia = esUsuarioDeEmpresa(o, currentProfile!.id);
+  const mx = esMia ? sugerencias.filter(s => s.necesita.id === o.id) : [];
+  // Un admin mirando otra empresa: se piden a la base al abrir la ficha.
+  const pedirRed = !esMia && puedeVerRed();
   const mine = currentProfile && (esUsuarioDeEmpresa(o, currentProfile.id) || currentProfile.role === 'admin');
   // Solicitudes: a empresas de las que no soy usuario, con ítems cargados.
   const puedeSolicitar = !!currentProfile && !esUsuarioDeEmpresa(o, currentProfile.id) && (o.items || []).some(i => i.id);
@@ -842,15 +877,7 @@ window.openDetail = function (id) {
     ${detalleItemsHtml(o, 'necesidad', !!mine)}
     ${(o.needsCovered || []).length ? `<div class="dsec"><div class="dsec-title">Necesidades cubiertas con proveedores</div><div class="tags">${o.needsCovered.map(t => `<span class="tag tag-cov">${esc(t)}</span>`).join('')}</div></div>` : ''}
 
-    ${mx.length ? `<div class="dsec"><div class="dsec-title">Vinculaciones posibles</div>
-      ${mx.map(m => `<div class="match-card">
-        <div class="match-label"><i class="ti ti-arrows-exchange"></i>puede cubrir su necesidad de <strong>${esc(m.categoria.nombre)}</strong> ${m.nivel === 'exacta' ? '<span class="match-strength match-strength--strong">Coincidencia exacta</span>' : '<span class="match-strength match-strength--weak">Misma categoría</span>'}</div>
-        <div class="match-name" onclick="closeModal('modal-detalle');setTimeout(()=>openDetail(${m.ofrece.id}),80)">${esc(m.ofrece.nombre)}</div>
-        <div class="muted-sm">${esc(m.ofrece.referente)}</div>
-        ${m.pares.map(par => `<div class="match-detail">${esc(par.necesidad || 'Sin subcategoría')} ↔ <span class="match-highlight">${esc(par.oferta || 'Sin subcategoría')}</span></div>`).join('')}
-        <div class="match-contact">${contactButtonsHtml(m.ofrece)}</div>
-      </div>`).join('')}
-    </div>` : ''}
+    <div id="md-vinc">${vinculacionesDetalleHtml(mx)}</div>
 
     ${puedeSolicitar ? `<div class="dsec detail-edit-wrap">
       <button class="btn-prim" onclick="closeModal('modal-detalle');abrirSolicitud(${o.id})"><i class="ti ti-send"></i> Enviar solicitud a esta empresa</button>
@@ -861,6 +888,12 @@ window.openDetail = function (id) {
     </div>` : ''}
   `;
   $('modal-detalle').classList.add('open');
+  if (pedirRed) {
+    Conexiones.listSugerencias({ empresa: o.id, limite: 100 }).then(r => {
+      const caja = document.getElementById('md-vinc');
+      if (caja && $('md-title').textContent === o.nombre) caja.innerHTML = vinculacionesDetalleHtml(sugerenciasDesdeBase(r.items, orgs, categorias), r.total);
+    }).catch(() => { /* sin la parte de vinculaciones */ });
+  }
 };
 
 // Servicios/productos o necesidades en el detalle. Quien puede editar la
@@ -1169,6 +1202,11 @@ window.guardarOrg = async function () {
   const editId = $input('f-edit-id').value;
   const digits = normCuit(cuitRaw);
   if (orgs.find(o => normCuit(o.cuit) === digits && String(o.id) !== editId)) {
+    showFormMsg('Ya existe una empresa registrada con ese CUIT.', 'err'); return;
+  }
+  // Control en la base, contra todas las organizaciones (sql/017). Si la
+  // base todavía no lo tiene, alcanza con el índice único al guardar.
+  if (!(await Empresas.cuitDisponible(cuitRaw, editId ? Number(editId) : null).catch(() => true))) {
     showFormMsg('Ya existe una empresa registrada con ese CUIT.', 'err'); return;
   }
   if (webRaw && !isValidUrl(webRaw)) { showFormMsg('El sitio web debe empezar con http:// o https://', 'err'); return; }
