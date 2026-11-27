@@ -10,7 +10,7 @@
 <!-- Política de seguridad de contenido (OWASP / ISO 27002 8.26): qué
      orígenes puede usar la página. GitHub Pages no permite cabeceras
      propias, por eso va como meta. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; script-src-elem 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://qxsqjufhkdmhowshspgb.supabase.co https://*.tile.openstreetmap.org https://i.ytimg.com; media-src 'self' blob: https://qxsqjufhkdmhowshspgb.supabase.co; font-src 'self' data:; connect-src 'self' https://qxsqjufhkdmhowshspgb.supabase.co wss://qxsqjufhkdmhowshspgb.supabase.co https://nominatim.openstreetmap.org; frame-src https://www.youtube-nocookie.com https://player.vimeo.com; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; script-src-elem 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://qxsqjufhkdmhowshspgb.supabase.co https://*.tile.openstreetmap.org https://i.ytimg.com; media-src 'self' blob: https://qxsqjufhkdmhowshspgb.supabase.co; font-src 'self' data:; connect-src 'self' https://qxsqjufhkdmhowshspgb.supabase.co wss://qxsqjufhkdmhowshspgb.supabase.co https://nominatim.openstreetmap.org https://apis.datos.gob.ar; frame-src https://www.youtube-nocookie.com https://player.vimeo.com; object-src 'none'; base-uri 'self'; form-action 'self'">
 <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
@@ -154,33 +154,52 @@
         <div class="stat-card"><div class="stat-label">Sectores</div><div class="stat-value" id="stat-sectores">0</div></div>
         <div class="stat-card stat-card--link" onclick="showScreen('vinculacion')" title="Ver mis conexiones"><div class="stat-label" id="stat-matches-label">Mis vinculaciones pendientes</div><div class="stat-value" id="stat-matches">0</div></div>
       </div>
-      <div class="search-row">
-        <input type="text" id="search-input" placeholder="Buscar por nombre, graduado, CUIT, sector, ciudad o necesidad..." oninput="renderDir()">
+      <div class="dir-layout">
+        <aside class="dir-filtros" id="dir-filtros" aria-labelledby="dir-filtros-titulo">
+          <div class="dir-filtros-head">
+            <h2 id="dir-filtros-titulo">Filtros</h2>
+            <button type="button" class="dir-filtros-cerrar" onclick="dirAbrirFiltros(false)" aria-label="Cerrar filtros"><i class="ti ti-x"></i></button>
+          </div>
+          <div id="dir-filtros-cuerpo"></div>
+          <div class="dir-filtros-pie"><button type="button" class="btn-prim" onclick="dirAbrirFiltros(false)">Ver resultados</button></div>
+        </aside>
+        <section class="dir-resultados" aria-labelledby="dir-resumen">
+          <div class="dir-barra">
+            <div class="search-row dir-buscar">
+              <i class="ti ti-search" aria-hidden="true"></i>
+              <input type="search" id="search-input" placeholder="Buscar por nombre, CUIT, sector, ciudad, servicio o necesidad…" aria-label="Buscar organizaciones" autocomplete="off">
+            </div>
+            <button type="button" class="btn-out dir-btn-filtros" id="dir-btn-filtros" onclick="dirAbrirFiltros(true)" aria-controls="dir-filtros" aria-expanded="false">
+              <i class="ti ti-adjustments-horizontal"></i> Filtros <span class="fgrupo-n hidden" id="dir-filtros-n">0</span>
+            </button>
+            <label class="dir-orden"><span>Ordenar</span>
+              <select id="dir-orden" class="form-select" aria-label="Ordenar resultados" onchange="dirOrden(this.value)"></select>
+            </label>
+          </div>
+          <div class="dir-chips hidden" id="dir-chips" aria-label="Filtros aplicados"></div>
+          <div class="section-header">
+            <h2 class="section-title" id="dir-resumen" aria-live="polite">Directorio de organizaciones</h2>
+            <span class="count-pill sr-only" id="dir-count">0</span>
+            <button type="button" class="btn-out btn-sm-txt" onclick="dirVerMapa()"><i class="ti ti-map-2"></i> Ver en el mapa</button>
+          </div>
+          <div class="dir-aviso hidden" id="dir-aviso" role="status"></div>
+          <div class="card-grid" id="org-grid"></div>
+          <div class="dir-mas-wrap"><button type="button" class="btn-out hidden" id="dir-mas" onclick="dirMas()">Ver más</button></div>
+        </section>
       </div>
-      <div class="filters">
-        <button class="chip active" onclick="setFilter(this,'todos')">Todos</button>
-        <button class="chip" onclick="setFilter(this,'Oil & Gas')">Oil &amp; Gas</button>
-        <button class="chip" onclick="setFilter(this,'Industrial')">Industrial</button>
-        <button class="chip" onclick="setFilter(this,'Consultoría')">Consultoría</button>
-        <button class="chip" onclick="setFilter(this,'has-need')">Con necesidades sin cubrir</button>
-      </div>
-      <div class="section-header">
-        <div class="section-title">Directorio de organizaciones</div>
-        <span class="count-pill" id="dir-count">0</span>
-      </div>
-      <div class="card-grid" id="org-grid"></div>
     </div>
 
     <!-- DIRECTORIO GRADUADOS -->
     <div class="screen" id="screen-graduados">
       <div class="search-row">
-        <input type="text" id="search-grad" placeholder="Buscar graduado por nombre, email o empresa..." oninput="renderGraduados()">
+        <input type="text" id="search-grad" placeholder="Buscar graduado por nombre o empresa..." aria-label="Buscar graduado">
       </div>
       <div class="section-header">
         <div class="section-title">Directorio de graduados</div>
         <span class="count-pill" id="grad-count">0</span>
       </div>
       <div class="card-grid" id="grad-grid"></div>
+      <div class="dir-mas-wrap"><button type="button" class="btn-out hidden" id="grad-mas" onclick="gradMas()">Ver más graduados</button></div>
     </div>
 
     <!-- VINCULACIÓN -->
@@ -250,10 +269,9 @@
         <div class="section-title">Mapa de organizaciones</div>
         <span class="count-pill" id="map-count">0</span>
       </div>
-      <div class="map-notice">
+      <div class="map-notice" id="map-notice" role="status">
         <i class="ti ti-info-circle icon-info"></i>
-        Las organizaciones aparecen en el mapa cuando tienen <strong>ciudad registrada</strong>. Hacé clic en un marcador para ver el nombre, logo y graduado.
-        El mapa usa OpenStreetMap y no requiere clave API.
+        <span id="map-notice-txt">Los números agrupan organizaciones cercanas: acercate o tocá un grupo para separarlas.</span>
       </div>
       <div id="gmap"></div>
     </div>
@@ -295,16 +313,21 @@
             <label class="form-label">Nombre de la organización *</label>
             <input class="form-input" id="f-nombre" type="text" placeholder="Ej: Tecmatik S.A.">
           </div>
+        </div>
+        <div class="form-row">
           <div class="form-group">
-            <label class="form-label">Sector / Industria</label>
-            <input class="form-input" id="f-sector" type="text" list="sectores-list" placeholder="Ej: Automatización industrial">
-            <datalist id="sectores-list"></datalist>
+            <label class="form-label" for="f-sector-id">Sector *</label>
+            <select class="form-select" id="f-sector-id"></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="f-sector2-id">Sector secundario <span class="label-note">(opcional)</span></label>
+            <select class="form-select" id="f-sector2-id"></select>
           </div>
         </div>
 
         <div class="form-group">
           <label class="form-label">Logo de la empresa</label>
-          <input type="file" id="f-logo" class="file-input" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" onchange="previewLogo()">
+          <input type="file" id="f-logo" class="file-input" accept="image/png,image/jpeg,image/webp,image/gif" onchange="previewLogo()">
           <div class="logo-preview-wrap">
             <img id="logo-preview-img" class="logo-preview hidden" alt="logo preview">
             <button class="logo-clear hidden" id="logo-clear-btn" onclick="clearLogo()">✕ Quitar logo</button>
@@ -320,12 +343,29 @@
 
         <div class="form-section">Ubicación</div>
         <div class="form-row">
-          <div class="form-group"><label class="form-label">Calle y número</label><input class="form-input" id="f-calle" type="text" placeholder="Ej: Av. Corrientes 1234"></div>
-          <div class="form-group"><label class="form-label">Localidad / Ciudad</label><input class="form-input" id="f-ciudad" type="text" placeholder="Ej: Lomas de Zamora"></div>
+          <div class="form-group">
+            <label class="form-label" for="f-pais">País</label>
+            <input class="form-input" id="f-pais" type="text" placeholder="Argentina" autocomplete="country-name">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="f-provincia-id" id="f-provincia-label">Provincia</label>
+            <select class="form-select" id="f-provincia-id"></select>
+            <input class="form-input hidden" id="f-provincia" type="text" placeholder="Provincia / Estado" aria-labelledby="f-provincia-label">
+          </div>
         </div>
         <div class="form-row">
-          <div class="form-group"><label class="form-label">Provincia / Estado</label><input class="form-input" id="f-provincia" type="text" placeholder="Ej: Buenos Aires"></div>
-          <div class="form-group"><label class="form-label">País</label><input class="form-input" id="f-pais" type="text" placeholder="Argentina"></div>
+          <div class="form-group fcerca">
+            <label class="form-label" for="f-ciudad">Localidad / Ciudad</label>
+            <input class="form-input" id="f-ciudad" type="text" placeholder="Empezá a escribir y elegí de la lista" autocomplete="off"
+              aria-autocomplete="list" aria-controls="f-ciudad-sug" aria-describedby="f-ciudad-ayuda">
+            <ul class="fsug hidden" id="f-ciudad-sug" role="listbox"></ul>
+            <div class="cuit-hint" id="f-ciudad-ayuda"></div>
+          </div>
+          <div class="form-group"><label class="form-label" for="f-calle">Calle y número</label><input class="form-input" id="f-calle" type="text" placeholder="Ej: Av. Corrientes 1234" autocomplete="street-address"></div>
+        </div>
+        <div class="ubic-mapa-wrap">
+          <div id="f-mapa" class="ubic-mapa" aria-label="Mapa para ubicar la organización"></div>
+          <div class="ubic-estado" id="f-ubic-estado" role="status"></div>
         </div>
 
         <div class="form-section">Referente graduado</div>
@@ -386,40 +426,65 @@
 
     <!-- ADMIN -->
     <div class="screen" id="screen-admin">
-      <div class="admin-section-title"><i class="ti ti-building"></i> Gestión de empresas <span class="admin-badge">Admin</span></div>
-      <div class="section-header">
-        <div class="search-row flex-grow mb-0">
-          <input type="text" id="admin-search-orgs" placeholder="Buscar empresa por nombre, CUIT o sector..." oninput="renderAdmin()">
+      <div class="admin-section-title"><i class="ti ti-shield"></i> Administración <span class="admin-badge">Admin</span></div>
+      <div class="filters" role="tablist" aria-label="Secciones de administración">
+        <button type="button" class="chip active" role="tab" aria-selected="true" aria-controls="adm-sec-empresas" id="adm-tab-empresas" onclick="admSeccion('empresas')"><i class="ti ti-building"></i> Empresas <span class="chip-n" id="admin-orgs-count">0</span></button>
+        <button type="button" class="chip" role="tab" aria-selected="false" aria-controls="adm-sec-usuarios" id="adm-tab-usuarios" onclick="admSeccion('usuarios')"><i class="ti ti-users"></i> Usuarios <span class="chip-n" id="admin-users-count">0</span></button>
+      </div>
+
+      <div id="adm-sec-empresas" role="tabpanel" aria-labelledby="adm-tab-empresas">
+        <div class="wm-filtros">
+          <div class="search-row dir-buscar flex-grow mb-0"><i class="ti ti-search" aria-hidden="true"></i>
+            <input type="search" id="admin-search-orgs" placeholder="Buscar por nombre, CUIT, sector, ciudad…" aria-label="Buscar empresas">
+          </div>
+          <input class="form-input adm-usuario" type="text" id="admin-filter-usuario" placeholder="Empresas de un usuario…" aria-label="Filtrar por usuario">
+          <select class="form-input admin-filter-select" id="admin-filter-rol-usuario" aria-label="Relación con el usuario" disabled>
+            <option value="">Principal o asociado</option>
+            <option value="principal">Solo administrador principal</option>
+            <option value="asociado">Solo usuario asociado</option>
+          </select>
         </div>
-        <select class="form-input admin-filter-select" id="admin-filter-usuario" onchange="renderAdmin()">
-          <option value="">Todos los usuarios</option>
-        </select>
-        <select class="form-input admin-filter-select" id="admin-filter-rol-usuario" onchange="renderAdmin()">
-          <option value="cualquiera">Admin. principal o asociado</option>
-          <option value="principal">Solo administrador principal</option>
-          <option value="asociado">Solo usuario asociado</option>
-        </select>
-        <span class="count-pill" id="admin-orgs-count">0</span>
-      </div>
-      <div class="table-wrap">
-        <table class="admin-table admin-table-orgs">
-          <thead><tr><th>Logo</th><th>Empresa</th><th>CUIT</th><th>Sector</th><th>Referente</th><th>Ubicación</th><th>Acciones</th></tr></thead>
-          <tbody id="admin-orgs-body"></tbody>
-        </table>
-      </div>
-      <div class="admin-section-title mt-1"><i class="ti ti-users"></i> Usuarios registrados <span class="admin-badge">Admin</span></div>
-      <div class="note-box">Por seguridad, borrar cuentas de usuario no está disponible desde el navegador (requeriría exponer una clave con privilegios totales). Si necesitás dar de baja a alguien, hacelo desde el panel de Supabase (Authentication → Users).</div>
-      <div class="section-header">
-        <div class="search-row flex-grow mb-0">
-          <input type="text" id="admin-search-users" placeholder="Buscar usuario por nombre, email o teléfono..." oninput="renderAdmin()">
+        <div class="table-wrap">
+          <table class="admin-table admin-table-orgs">
+            <caption class="sr-only">Empresas</caption>
+            <thead><tr><th scope="col">Logo</th><th scope="col">Empresa</th><th scope="col">CUIT</th><th scope="col">Sector</th><th scope="col">Referente</th><th scope="col">Ubicación</th><th scope="col">Acciones</th></tr></thead>
+            <tbody id="admin-orgs-body"></tbody>
+          </table>
         </div>
-        <span class="count-pill" id="admin-users-count">0</span>
+        <div id="admin-orgs-pag"></div>
       </div>
-      <div class="table-wrap">
-        <table class="admin-table admin-table-users">
-          <thead><tr><th>Nombre</th><th>Email</th><th>Teléfono</th><th>Empresas</th><th>Rol</th><th>Acciones</th></tr></thead>
-          <tbody id="admin-users-body"></tbody>
-        </table>
+
+      <div id="adm-sec-usuarios" class="hidden" role="tabpanel" aria-labelledby="adm-tab-usuarios">
+        <div class="note-box">Por seguridad, borrar cuentas de usuario no está disponible desde el navegador (requeriría exponer una clave con privilegios totales). Si necesitás dar de baja a alguien, hacelo desde el panel de Supabase (Authentication → Users).</div>
+        <div class="wm-filtros">
+          <div class="search-row dir-buscar flex-grow mb-0"><i class="ti ti-search" aria-hidden="true"></i>
+            <input type="search" id="admin-search-users" placeholder="Buscar por nombre, email o teléfono…" aria-label="Buscar usuarios">
+          </div>
+          <select class="form-input admin-filter-select" id="admin-u-rol" aria-label="Rol">
+            <option value="">Todos los roles</option>
+            <option value="admin">Administradores</option>
+            <option value="webmaster">Webmasters</option>
+            <option value="user">Usuarios</option>
+          </select>
+          <select class="form-input admin-filter-select" id="admin-u-empresa" aria-label="Empresas">
+            <option value="">Con o sin empresa</option>
+            <option value="si">Con empresa</option>
+            <option value="no">Sin empresa</option>
+          </select>
+          <select class="form-input admin-filter-select" id="admin-u-orden" aria-label="Ordenar">
+            <option value="nombre">Orden: apellido</option>
+            <option value="recientes">Orden: más recientes</option>
+            <option value="ultimo_ingreso">Orden: último ingreso</option>
+          </select>
+        </div>
+        <div class="table-wrap">
+          <table class="admin-table admin-table-users">
+            <caption class="sr-only">Usuarios</caption>
+            <thead><tr><th scope="col">Nombre</th><th scope="col">Email</th><th scope="col">Teléfono</th><th scope="col">Empresas</th><th scope="col">Último ingreso</th><th scope="col">Rol</th><th scope="col">Acciones</th></tr></thead>
+            <tbody id="admin-users-body"></tbody>
+          </table>
+        </div>
+        <div id="admin-users-pag"></div>
       </div>
     </div>
 
@@ -432,16 +497,16 @@
         <button class="chip" onclick="wmSeccion(this,'solicitudes')"><i class="ti ti-send"></i> Solicitudes</button>
         <button class="chip" onclick="wmSeccion(this,'blog')"><i class="ti ti-news"></i> Blog</button>
         <button class="chip" onclick="wmSeccion(this,'categorias')"><i class="ti ti-category"></i> Categorías</button>
+        <button class="chip" onclick="wmSeccion(this,'sectores')"><i class="ti ti-tags"></i> Sectores</button>
       </div>
 
       <div id="wm-sec-bitacora">
         <p class="hint-text">Todos los movimientos de los usuarios. No se puede editar ni borrar. De los mensajes del chat solo se registra que se enviaron, nunca su contenido.</p>
         <div class="wm-filtros">
-          <select class="form-input" id="wm-f-usuario" aria-label="Usuario"><option value="">Todos los usuarios</option></select>
+          <input class="form-input" type="text" id="wm-f-usuario" placeholder="Usuario: escribí nombre o email…" aria-label="Filtrar por usuario">
           <select class="form-input" id="wm-f-accion" aria-label="Acción"><option value="">Todas las acciones</option></select>
           <label class="wm-fecha">Desde <input class="form-input" type="date" id="wm-f-desde"></label>
           <label class="wm-fecha">Hasta <input class="form-input" type="date" id="wm-f-hasta"></label>
-          <button class="btn-prim" onclick="wmBuscarBitacora()"><i class="ti ti-filter"></i> Aplicar</button>
           <span class="count-pill" id="wm-bit-count">0</span>
         </div>
         <div class="table-wrap">
@@ -450,14 +515,14 @@
             <tbody id="wm-bit-body"></tbody>
           </table>
         </div>
-        <div class="action-row"><button class="btn-out hidden" id="wm-bit-mas" onclick="wmMasBitacora()">Cargar más</button></div>
+        <div id="wm-bit-pag"></div>
       </div>
 
       <div id="wm-sec-conexiones" class="hidden">
         <p class="hint-text">Todas las conexiones entre empresas y si hubo contacto por el chat (cantidad de mensajes y fechas). Por privacidad, el contenido de los mensajes no es visible.</p>
         <div class="wm-filtros">
-          <input class="form-input" type="text" id="wm-c-buscar" placeholder="Buscar empresa o categoría..." oninput="wmRenderConexiones()">
-          <select class="form-input" id="wm-c-estado" onchange="wmRenderConexiones()" aria-label="Estado">
+          <input class="form-input" type="text" id="wm-c-buscar" placeholder="Buscar empresa o categoría..." >
+          <select class="form-input" id="wm-c-estado" aria-label="Estado">
             <option value="">Todos los estados</option>
             <option value="match">Match</option>
             <option value="match_sin_contacto">Match sin contacto</option>
@@ -473,13 +538,14 @@
             <tbody id="wm-con-body"></tbody>
           </table>
         </div>
+        <div id="wm-con-pag"></div>
       </div>
 
       <div id="wm-sec-solicitudes" class="hidden">
         <p class="hint-text">Todas las solicitudes entre empresas (o de personas a empresas), su estado y si hubo contacto por el chat. Por privacidad, el contenido de los mensajes no es visible.</p>
         <div class="wm-filtros">
-          <input class="form-input" type="text" id="wm-s-buscar" placeholder="Buscar empresa, persona o categoría..." oninput="wmRenderSolicitudes()">
-          <select class="form-input" id="wm-s-estado" onchange="wmRenderSolicitudes()" aria-label="Estado">
+          <input class="form-input" type="text" id="wm-s-buscar" placeholder="Buscar empresa, persona o categoría..." >
+          <select class="form-input" id="wm-s-estado" aria-label="Estado">
             <option value="">Todos los estados</option>
             <option value="pendiente">Pendientes</option>
             <option value="aceptada">Aceptadas</option>
@@ -495,6 +561,7 @@
             <tbody id="wm-sol-body"></tbody>
           </table>
         </div>
+        <div id="wm-sol-pag"></div>
       </div>
 
       <div id="wm-sec-blog" class="hidden">
@@ -531,6 +598,22 @@
           </table>
         </div>
       </div>
+
+      <div id="wm-sec-sectores" class="hidden">
+        <p class="hint-text">Sectores que eligen las organizaciones (uno principal y uno secundario opcional). Renombrar un sector lo actualiza en todas las empresas; no se puede borrar un sector en uso. El orden define cómo aparecen en las listas.</p>
+        <div class="wm-cat-nueva">
+          <input class="form-input" type="text" id="wm-sec-nuevo" placeholder="Nuevo sector (ej: Agroindustria)" maxlength="80" aria-label="Nombre del nuevo sector">
+          <button class="btn-prim" onclick="wmCrearSector()"><i class="ti ti-plus"></i> Crear</button>
+        </div>
+        <div class="form-msg" id="wm-sec-msg"></div>
+        <div class="section-header mt-1"><div class="section-title">Sectores</div><span class="count-pill" id="wm-sec-count">0</span></div>
+        <div class="table-wrap">
+          <table class="admin-table wm-table">
+            <thead><tr><th scope="col">Orden</th><th scope="col">Nombre</th><th scope="col">Organizaciones</th><th scope="col">Acciones</th></tr></thead>
+            <tbody id="wm-sec-body"></tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
   </main><!-- /main -->
@@ -552,28 +635,6 @@
 </div>
 
 <!-- MODAL: EDITAR UBICACIÓN -->
-<div class="modal-overlay" id="modal-ubicacion">
-  <div class="modal modal-sm">
-    <div class="modal-header">
-      <h2 id="modal-ub-title">Editar ubicación</h2>
-      <button class="modal-close" onclick="closeModal('modal-ubicacion')"><i class="ti ti-x"></i></button>
-    </div>
-    <p class="hint-text hint-tight">Modificá la dirección. Los cambios se guardan y se reflejan en el mapa.</p>
-    <input type="hidden" id="ub-id">
-    <div class="form-group"><label class="form-label">Calle y número</label><input class="form-input" id="ub-calle" type="text" placeholder="Ej: Av. Corrientes 1234"></div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">Localidad / Ciudad</label><input class="form-input" id="ub-ciudad" type="text"></div>
-      <div class="form-group"><label class="form-label">Provincia / Estado</label><input class="form-input" id="ub-provincia" type="text"></div>
-    </div>
-    <div class="form-group"><label class="form-label">País</label><input class="form-input" id="ub-pais" type="text"></div>
-    <div class="action-row">
-      <button class="btn-prim" onclick="guardarUbicacion()"><i class="ti ti-map-pin"></i> Guardar</button>
-      <button class="btn-out" onclick="closeModal('modal-ubicacion')">Cancelar</button>
-    </div>
-    <div class="form-msg" id="ub-msg"></div>
-  </div>
-</div>
-
 <!-- MODAL: EDITAR PERFIL PROPIO -->
 <div class="modal-overlay" id="modal-perfil">
   <div class="modal modal-sm">

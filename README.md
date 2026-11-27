@@ -34,7 +34,13 @@ CUPFI/
 │       ├── webmaster.ts       # Bitácora, resumen de contacto y permiso de webmaster (datos)
 │       ├── contexto.ts        # Estado compartido entre main.ts y los módulos ui-*.ts
 │       ├── ui-conexiones.ts   # Pantalla Vinculación, aviso de match y chat privado
-│       ├── ui-webmaster.ts    # Pestaña Webmaster (bitácora, conexiones, categorías)
+│       ├── ui-webmaster.ts    # Pestaña Webmaster (bitácora, conexiones, solicitudes, categorías, sectores)
+│       ├── directorio.ts      # Búsqueda de empresas en la base (buscar_empresas) y servicio Georef
+│       ├── ui-directorio.ts   # Directorio: filtros combinables, chips, orden y "Ver más"
+│       ├── ui-ubicacion.ts    # Formulario: sector de la lista, localidad oficial y mini mapa
+│       ├── ui-admin.ts        # Pantalla Admin con búsqueda, filtros y páginas
+│       ├── ui-graduados.ts    # Directorio de graduados (búsqueda y "Ver más")
+│       ├── ui-listas.ts       # Paginador y buscador de usuarios con sugerencias
 │       ├── ui-guia.ts         # Guía tipo chatbot (primer ingreso + preguntas frecuentes)
 │       ├── utils.ts           # Helpers (escape HTML, validaciones, mensajes de error)
 │       ├── main.ts            # UI: navegación, renderizado, listeners
@@ -47,6 +53,7 @@ CUPFI/
 │   ├── 013_solicitudes.sql                # Solicitudes (buscar y pedir/ofrecer) y carga rápida de ítems
 │   ├── 014_blog.sql                       # Blog: publicaciones, fotos/videos, comentarios, me gusta, moderación
 │   ├── 015_normas_seguridad.sql           # Normas: contacto personal protegido, links seguros, claves temporales
+│   ├── 016_busqueda_sectores_ubicacion.sql # Búsqueda escalable, sectores fijos, ubicación normalizada
 │   └── historial/                         # Migraciones ya aplicadas al proyecto actual (solo referencia,
 │                                           # no hace falta correrlas en un proyecto nuevo: 001 ya las incluye)
 ├── supabase/functions/admin-update-user/  # Edge Function (opcional): admin edita email/contraseña
@@ -203,7 +210,8 @@ correrlos más de una vez.
    Después, pegá y ejecutá [`sql/013_solicitudes.sql`](sql/013_solicitudes.sql)
    (solicitudes y carga rápida de ofertas/necesidades) y
    [`sql/014_blog.sql`](sql/014_blog.sql) (blog) y
-   [`sql/015_normas_seguridad.sql`](sql/015_normas_seguridad.sql) (seguridad y datos personales).
+   [`sql/015_normas_seguridad.sql`](sql/015_normas_seguridad.sql) (seguridad y datos personales) y
+   [`sql/016_busqueda_sectores_ubicacion.sql`](sql/016_busqueda_sectores_ubicacion.sql) (búsqueda, sectores y ubicación).
 5. Registrate normalmente desde la app (pestaña "Registrarse"). La
    **primera** cuenta de un proyecto nuevo no es admin automáticamente: hay
    que asignarle el rol manualmente (paso siguiente). A partir de ahí, ese
@@ -346,6 +354,45 @@ Qué agrega:
   completa con teclado, ventanas que se cierran con Esc, etiquetas y
   mensajes para lectores de pantalla, "Saltar al contenido", título por
   sección y respeto de "reducir movimiento".
+
+### Actualización: búsqueda escalable, sectores y ubicación (sql/016)
+
+1. En el SQL Editor, pegá y ejecutá
+   [`sql/016_busqueda_sectores_ubicacion.sql`](sql/016_busqueda_sectores_ubicacion.sql).
+   Se puede correr más de una vez y no borra datos: el sector de texto
+   anterior queda guardado en `sector_original`.
+2. Solo en el proyecto CUPFI: ejecutá también
+   [`sql/historial/016_datos_ubicaciones.sql`](sql/historial/016_datos_ubicaciones.sql)
+   (localidades y coordenadas de las organizaciones ya cargadas).
+3. Publicá el sitio (merge a `main`). El sitio anterior sigue funcionando
+   con la base nueva mientras se publica.
+
+Qué agrega:
+- **Búsqueda en la base, no en el navegador**: el directorio, el mapa, Admin,
+  Webmaster y Graduados piden solo la página que se ve. Probado con 20.000
+  organizaciones y 100.000 ofertas/necesidades: cada búsqueda tarda menos de
+  medio segundo. Busca sin importar acentos ni mayúsculas y, si no encuentra
+  nada exacto, muestra resultados parecidos (errores de tipeo) avisándolo.
+- **Filtros combinables** en el directorio: sector, ubicación (provincia →
+  partido → localidad, o "cerca de" una localidad con distancia en km),
+  qué ofrece y qué necesita (con subcategoría), tipo de organización,
+  "compatibles conmigo", "con necesidades" y "mis empresas". Cada opción
+  muestra cuántos resultados da; los filtros activos quedan como chips que se
+  quitan con ✕. Orden: relevancia, cercanía, coincidencias, nombre o más
+  recientes. "Ver más" de a 24.
+- **Sectores**: lista fija de 9 que administra el webmaster (Webmaster →
+  Sectores: crear, renombrar, ordenar; borrar solo si nadie lo usa). Cada
+  organización elige uno principal y, opcionalmente, uno secundario.
+- **Ubicación normalizada** con el servicio oficial Georef
+  (apis.datos.gob.ar): al escribir la localidad se elige de la lista, la
+  calle da el punto exacto y el marcador se puede arrastrar. Si el servicio
+  no responde, se puede escribir a mano y marcar el punto en el mapa. Las
+  coordenadas quedan guardadas: el mapa ya no depende de buscar direcciones
+  cada vez y agrupa los puntos cercanos.
+- **Graduados** incluye también a los administradores (son graduados).
+- **Admin y Webmaster** con páginas numeradas (25/50/100 por página) y
+  buscador de usuarios con sugerencias en lugar de listas con todos los
+  usuarios.
 
 ### Confirmación de email
 

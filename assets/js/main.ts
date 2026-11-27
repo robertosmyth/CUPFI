@@ -17,6 +17,11 @@ import { contarMisPendientes, initConexionesUI, puedeVerRed, resetConexionesUI }
 import { resetWebmasterUI } from './ui-webmaster.ts';
 import { iniciarGuia, resetGuia } from './ui-guia.ts';
 import { anunciarPantalla, initA11y } from './a11y.ts';
+import { limpiarCache as limpiarCacheDirectorio } from './directorio.ts';
+import { initDirectorio, limpiarFiltrosDirectorio, nombreSector, puntosDelDirectorio, renderDirectorio, resetDirectorio, totalesRed } from './ui-directorio.ts';
+import { cargarUbicacion, initFormUbicacion, leerUbicacion, resetUbicacion } from './ui-ubicacion.ts';
+import { renderGraduadosUI, resetGraduadosUI } from './ui-graduados.ts';
+import { renderAdminUI, resetAdminUI } from './ui-admin.ts';
 import { validarClave, urlSegura } from './seguridad.ts';
 import { detenerSeguridadSesion, iniciarSeguridadSesion, initIndicadoresClave, limpiarCambioClave, revisarClaveTemporal } from './ui-seguridad.ts';
 import '@fontsource/poppins/300.css';
@@ -43,10 +48,10 @@ declare global {
     doForgotPassword(): Promise<void>;
     doResetPassword(): Promise<void>;
     showScreen(name: string): void;
-    setFilter(el: HTMLElement, val: string): void;
     renderDir(): void;
     renderGraduados(): void;
     renderMapa(): Promise<void>;
+    mapaSinFiltros(): void;
     _openDetail(id: number): void;
     renderMias(): void;
     openDetail(id: number): void;
@@ -61,7 +66,6 @@ declare global {
     cancelEdit(): void;
     guardarOrg(): Promise<void>;
     openEditUbicacion(id: number): void;
-    guardarUbicacion(): Promise<void>;
     itemCategoriaCambio(tipo: ItemTipo): void;
     itemAgregar(tipo: ItemTipo): void;
     itemSugerida(tipo: ItemTipo, idx: number): void;
@@ -105,7 +109,6 @@ type TagType = 'instalaciones' | 'needs-covered';
 
 const tags: Record<TagType, string[]> = { instalaciones: [], 'needs-covered': [] };
 const tagCls: Record<TagType, string> = { instalaciones: 'rt-i', 'needs-covered': 'rt-nc' };
-let activeFilter = 'todos';
 let currentProfile: Profile | null = null;
 // Link de "restablecer contraseña" del correo: se detecta en la URL apenas
 // carga el script, ANTES de que Supabase la procese y la limpie. Supabase
@@ -128,7 +131,6 @@ let currentLogoUrl: string | null = null;  // URL ya existente (modo edición) o
 
 // Mapa
 let leafletMap: LeafletTypes.Map | null = null;
-let mapMarkers: LeafletTypes.Marker[] = [];
 let leafletModule: typeof LeafletTypes | null = null;
 
 // Sugerencias para "Necesidades cubiertas con proveedores" (texto libre,
@@ -149,12 +151,6 @@ const CATEGORIAS_INSTALACIONES = [
   'Planta de producción', 'Laboratorio de ensayos', 'Depósito / almacenamiento',
   'Taller de mecanizado CNC', 'Sala limpia', 'Playa de maniobras', 'Oficinas técnicas',
   'Equipos de diagnóstico', 'Flota de vehículos', 'Sala de capacitación',
-];
-const SECTORES = [
-  'Oil & Gas', 'Industrial', 'Consultoría', 'Automotriz', 'Metalmecánica',
-  'Electrotecnia', 'Construcción', 'Alimenticia', 'Química', 'Textil / Calzado',
-  'Minería', 'Energía', 'Software / TI', 'Logística', 'Agroindustria',
-  'Salud', 'Educación', 'Ferroviario', 'Naval / Portuario', 'Institucional',
 ];
 const QUICK_TAG_SOURCES: Record<TagType, string[]> = {
   instalaciones: CATEGORIAS_INSTALACIONES,
@@ -267,9 +263,6 @@ function wireStaticEvents(): void {
   $('modal-detalle').addEventListener('click', function (e) {
     if (e.target === this) window.closeModal('modal-detalle');
   });
-  $('modal-ubicacion').addEventListener('click', function (e) {
-    if (e.target === this) window.closeModal('modal-ubicacion');
-  });
   $('modal-perfil').addEventListener('click', function (e) {
     if (e.target === this) window.closeModal('modal-perfil');
   });
@@ -277,7 +270,6 @@ function wireStaticEvents(): void {
   initSolicitudesUI();
   initBlogUI();
   renderQuickTagButtons();
-  renderSectorDatalist();
 }
 
 function renderQuickTagButtons(): void {
@@ -288,12 +280,6 @@ function renderQuickTagButtons(): void {
   };
   mk('quick-instalaciones', CATEGORIAS_INSTALACIONES, 'instalaciones');
   mk('quick-needs-covered', CATEGORIAS_SERVICIOS, 'needs-covered');
-}
-
-function renderSectorDatalist(): void {
-  const dl = document.getElementById('sectores-list');
-  if (!dl) return;
-  dl.innerHTML = SECTORES.map(s => `<option value="${esc(s)}">`).join('');
 }
 
 // ══════════════════════════════════════════════
@@ -375,7 +361,7 @@ window.doLogout = async function () {
 // pantalla, aunque falle la red.
 async function cerrarSesion(motivo: 'sesion_cierre' | 'sesion_inactividad'): Promise<void> {
   detenerSeguridadSesion();
-  if (leafletMap) { leafletMap.remove(); leafletMap = null; mapMarkers = []; }
+  if (leafletMap) { leafletMap.remove(); leafletMap = null; mapCluster = null; }
   await Auth.registrarEvento(motivo);
   try { await Auth.signOut(); } catch (e) { console.error('No se pudo cerrar la sesión en el servidor:', e); }
   currentProfile = null;
@@ -448,6 +434,10 @@ function showAuthScreen(): void {
   resetWebmasterUI();
   resetGuia();
   resetBlogUI();
+  resetDirectorio();
+  resetAdminUI();
+  resetGraduadosUI();
+  limpiarCacheDirectorio();
   conexiones = [];
   solicitudes = [];
 }
@@ -492,6 +482,7 @@ async function enterAppImpl(): Promise<void> {
     return;
   }
   if (recoveryInProgress) { currentProfile = null; showAuthScreen(); return; } // llegó el link de reset mientras cargaba
+  await Promise.all([initDirectorio(), initFormUbicacion(ensureLeaflet)]).catch(e => console.error('No se pudieron cargar sectores y provincias:', e));
   window.showScreen('directorio');
   iniciarSeguridadSesion({ email: () => currentProfile?.email ?? null, cerrarSesion: () => cerrarSesion('sesion_inactividad') });
   revisarClaveTemporal().catch(() => {});
@@ -499,6 +490,7 @@ async function enterAppImpl(): Promise<void> {
 }
 
 async function refreshData(): Promise<void> {
+  limpiarCacheDirectorio(); // lo buscado antes puede haber cambiado
   const [e, p, a, items, cats, cons, sols] = await Promise.all([
     Empresas.listEmpresas(), Auth.listProfiles(), Empresas.listAsociaciones(),
     Empresas.listItems(), Empresas.listCategorias(), Conexiones.listConexiones(),
@@ -605,14 +597,12 @@ window.showScreen = function (name) {
   if (name === 'blog') window.renderBlog();
   if (name === 'mapa') window.renderMapa().catch(e => console.error('No se pudo cargar el mapa:', e));
   if (name === 'mis-empresas') window.renderMias();
-  if (name === 'registrar') { if (!editingId) prefillUser(); renderItemEditors(); }
+  if (name === 'registrar') {
+    if (!editingId) { prefillUser(); void cargarUbicacion(null); }
+    renderItemEditors();
+  }
   if (name === 'admin') window.renderAdmin();
   if (name === 'webmaster') window.renderWebmaster();
-};
-
-window.setFilter = function (el, val) {
-  document.querySelectorAll('#screen-directorio .chip').forEach(c => c.classList.remove('active'));
-  el.classList.add('active'); activeFilter = val; window.renderDir();
 };
 
 function prefillUser(): void {
@@ -629,34 +619,19 @@ function prefillUser(): void {
 // DIRECTORIO EMPRESAS
 // ══════════════════════════════════════════════
 window.renderDir = function () {
-  const q = ($input('search-input').value || '').toLowerCase();
-  const INDUSTRIAL_KEYWORDS = ['Industrial', 'Autopartista', 'Microfusión', 'Transmisión', 'Materiales', 'Calzado', 'Herramientas', 'Electrotecnia', 'Sanitarios', 'Ferroviario', 'Inspección', 'Portuario', 'mecánica', 'eléctric'];
-  let filtered = orgs.filter(o => {
-    if (activeFilter === 'Oil & Gas' && !(o.sector || '').includes('Oil')) return false;
-    if (activeFilter === 'Industrial' && !INDUSTRIAL_KEYWORDS.some(k => (o.sector || '').includes(k))) return false;
-    if (activeFilter === 'Consultoría' && !['Consul', 'Radicac', 'profesional'].some(k => (o.sector || '').includes(k))) return false;
-    if (activeFilter === 'has-need' && !itemsDe(o, 'necesidad').length) return false;
-    if (!q) return true;
-    const hay = [o.nombre, o.sector, o.cuit, o.desc, o.referente, o.ciudad, o.provincia, ...(o.items || []).map(itemLabel)].join(' ').toLowerCase();
-    return hay.includes(q);
-  });
-
-  $('stat-total').textContent = String(orgs.length);
-  $('stat-users').textContent = String(profiles.filter(u => u.role !== 'admin').length);
-  $('stat-sectores').textContent = String(new Set(orgs.map(o => o.sector).filter(Boolean)).size);
+  // La lista, los filtros y los contadores los arma ui-directorio.ts con
+  // la búsqueda en la base (buscar_empresas). Acá solo las tarjetas de arriba.
+  renderDirectorio();
+  void totalesRed().then(t => {
+    $('stat-total').textContent = t.organizaciones.toLocaleString('es-AR');
+    $('stat-sectores').textContent = String(t.sectores);
+  }).catch(() => {});
+  $('stat-users').textContent = String(profiles.length);
   // Admins y webmasters ven el total de la red; el resto, solo lo de sus
   // empresas (las coincidencias entre otras empresas son privadas).
   const verRed = puedeVerRed();
   $('stat-matches-label').textContent = verRed ? 'Vinculaciones posibles (red)' : 'Mis vinculaciones pendientes';
   $('stat-matches').textContent = String(verRed ? calcularSugerencias(orgs, categorias).length : contarMisPendientes());
-  $('dir-count').textContent = String(filtered.length);
-
-  const grid = $('org-grid');
-  if (!filtered.length) {
-    grid.innerHTML = '<div class="empty empty--full"><i class="ti ti-building-off"></i>Sin resultados para ese criterio.</div>';
-    return;
-  }
-  grid.innerHTML = filtered.map(o => renderOrgCard(o)).join('');
 };
 
 // Tarjeta de organización, compartida entre el Directorio y "Mis empresas".
@@ -681,49 +656,7 @@ function renderOrgCard(o: Empresa): string {
 // ══════════════════════════════════════════════
 // DIRECTORIO GRADUADOS
 // ══════════════════════════════════════════════
-window.renderGraduados = function () {
-  const q = ($input('search-grad').value || '').toLowerCase();
-  const visible = profiles.filter(u => u.role !== 'admin');
-  const filtered = visible.filter(u => {
-    if (!q) return true;
-    const uOrgs = orgs.filter(o => esUsuarioDeEmpresa(o, u.id)).map(o => o.nombre).join(' ');
-    return [u.nombre, u.apellido, u.email, uOrgs].join(' ').toLowerCase().includes(q);
-  });
-
-  $('grad-count').textContent = String(filtered.length);
-  const grid = $('grad-grid');
-  if (!filtered.length) {
-    grid.innerHTML = '<div class="empty empty--full"><i class="ti ti-users-off"></i>Sin resultados.</div>';
-    return;
-  }
-  grid.innerHTML = filtered.map(u => {
-    const uOrgs = orgs.filter(o => esUsuarioDeEmpresa(o, u.id));
-    const isSelf = currentProfile && u.id === currentProfile.id;
-    return `<div class="user-card">
-      <div class="user-card-head">
-        <div class="user-avatar">${esc((u.nombre?.[0] || '') + (u.apellido?.[0] || ''))}</div>
-        <div>
-          <div class="user-name">${esc(u.nombre + ' ' + u.apellido)} ${isSelf ? '<span class="badge-self">Yo</span>' : ''}</div>
-          ${u.email ? `<div class="user-contact"><i class="ti ti-mail"></i>${esc(u.email)}</div>` : ''}
-          ${u.tel ? `<div class="user-contact"><i class="ti ti-phone"></i>${esc(u.tel)}</div>` : ''}
-          ${!u.email && !u.tel ? '<div class="user-contact user-contact--privado"><i class="ti ti-lock"></i>Contacto visible al vincularse</div>' : ''}
-        </div>
-      </div>
-      <div class="user-companies">
-        <div class="user-companies-title"><i class="ti ti-building"></i>${uOrgs.length} empresa${uOrgs.length !== 1 ? 's' : ''}</div>
-        ${uOrgs.length === 0 ? '<div class="muted-note">Sin empresas registradas aún.</div>' : ''}
-        ${uOrgs.map(o => `
-          <div class="mini-company" onclick="openDetail(${o.id})">
-            ${o.logo ? `<img src="${esc(o.logo)}" class="mini-logo" alt="logo">` : `<div class="mini-avatar">${esc(ini(o.nombre))}</div>`}
-            <div>
-              <div class="mini-name">${esc(o.nombre)}</div>
-              <div class="mini-sector">${esc(o.sector)}${o.ciudad ? ' · ' + esc(o.ciudad) : ''}</div>
-            </div>
-          </div>`).join('')}
-      </div>
-    </div>`;
-  }).join('');
-};
+window.renderGraduados = function () { renderGraduadosUI(); };
 
 // ══════════════════════════════════════════════
 // MAPA (Leaflet + OpenStreetMap, sin clave API)
@@ -743,61 +676,40 @@ async function ensureLeaflet(): Promise<typeof LeafletTypes> {
   return leafletModule;
 }
 
-interface GeoCoords { lat: number; lng: number }
-type GeocodeCacheValue = GeoCoords | null;
-
-// Caché de geocoding (memoria + localStorage). Nominatim (el geocoder
-// gratuito de OpenStreetMap) pide explícitamente no golpear su API sin
-// cachear: antes esto se re-geocodificaba TODO el directorio cada vez que
-// se abría la pestaña "Mapa", en serie y sin guardar nada. Acá se cachea
-// por dirección normalizada; no se cachean errores de red (sí se cachea
-// "no se encontró esa dirección") para poder reintentar si fue un problema
-// pasajero de conexión.
-const GEOCODE_CACHE_KEY = 'cupfi_geocode_cache_v1';
-let geocodeCache: Record<string, GeocodeCacheValue> | null = null;
-
-function loadGeocodeCache(): Record<string, GeocodeCacheValue> {
-  if (geocodeCache) return geocodeCache;
-  try {
-    const raw = localStorage.getItem(GEOCODE_CACHE_KEY);
-    geocodeCache = raw ? JSON.parse(raw) : {};
-  } catch {
-    geocodeCache = {};
-  }
-  return geocodeCache!;
-}
-
-function saveGeocodeCache(): void {
-  try {
-    localStorage.setItem(GEOCODE_CACHE_KEY, JSON.stringify(geocodeCache || {}));
-  } catch {
-    // localStorage puede no estar disponible (modo privado, cuota llena);
-    // no es crítico, simplemente no persiste entre sesiones.
-  }
-}
-
-async function geocodeAddress(address: string): Promise<GeocodeCacheValue> {
-  const cache = loadGeocodeCache();
-  const key = address.trim().toLowerCase();
-  if (key in cache) return cache[key];
-  try {
-    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&countrycodes=ar`;
-    const res = await fetch(url, { headers: { 'Accept-Language': 'es' } });
-    const data = await res.json();
-    const coords: GeocodeCacheValue = data && data.length ? { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) } : null;
-    cache[key] = coords;
-    saveGeocodeCache();
-    return coords;
-  } catch {
-    return null; // silencioso y sin cachear: si falla la red, se reintenta la próxima vez
-  }
-}
-
-window.renderMapa = async function () {
-  const withLoc = orgs.filter(o => o.ciudad || o.provincia);
-  $('map-count').textContent = String(withLoc.length);
-
+// Agrupa marcadores cercanos ("12" en un círculo) para que el mapa siga
+// siendo legible con miles de organizaciones. La librería espera Leaflet
+// como variable global: se le pasa una copia del módulo.
+let ClusterGroup: (new (opts?: Record<string, unknown>) => LeafletTypes.FeatureGroup) | null = null;
+async function ensureCluster(): Promise<NonNullable<typeof ClusterGroup>> {
+  if (ClusterGroup) return ClusterGroup;
   const L = await ensureLeaflet();
+  (globalThis as unknown as { L: unknown }).L = { ...L };
+  await import('leaflet.markercluster/dist/MarkerCluster.css');
+  await import('leaflet.markercluster/dist/MarkerCluster.Default.css');
+  const mc = await import('leaflet.markercluster') as unknown as { MarkerClusterGroup: NonNullable<typeof ClusterGroup> };
+  ClusterGroup = mc.MarkerClusterGroup;
+  return ClusterGroup;
+}
+
+function pinIcon(L: typeof LeafletTypes, aproximado = false): LeafletTypes.DivIcon {
+  return L.divIcon({
+    html: `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="36" viewBox="0 0 28 36" aria-hidden="true">
+      <path d="M14 0C6.27 0 0 6.27 0 14c0 9.625 14 22 14 22S28 23.625 28 14C28 6.27 21.73 0 14 0z" fill="${aproximado ? '#6b5fb5' : '#3B24C8'}"/>
+      <circle cx="14" cy="14" r="7" fill="white"/>
+      <circle cx="14" cy="14" r="4" fill="#233DFF"/>
+    </svg>`,
+    className: '', iconSize: [28, 36], iconAnchor: [14, 36], popupAnchor: [0, -38],
+  });
+}
+
+let mapCluster: LeafletTypes.FeatureGroup | null = null;
+
+// El mapa muestra lo mismo que el directorio con sus filtros, usando las
+// coordenadas guardadas en la base (sql/016): ya no se adivina la
+// dirección en cada visita ni se pierden empresas superpuestas.
+window.renderMapa = async function () {
+  const [L, Cluster, datos] = await Promise.all([ensureLeaflet(), ensureCluster(), puntosDelDirectorio()]);
+  $('map-count').textContent = datos.puntos.length.toLocaleString('es-AR');
 
   if (!leafletMap) {
     leafletMap = L.map('gmap').setView([-38.5, -63.5], 4);
@@ -807,55 +719,42 @@ window.renderMapa = async function () {
     }).addTo(leafletMap);
   }
   const map = leafletMap;
+  setTimeout(() => map.invalidateSize(), 50);
+  mapCluster?.remove();
+  mapCluster = new Cluster({ showCoverageOnHover: false, maxClusterRadius: 45, chunkedLoading: true });
 
-  mapMarkers.forEach(m => m.remove());
-  mapMarkers = [];
-  if (!withLoc.length) return;
+  const sinUbicacion = datos.total - datos.puntos.length;
+  const partes: string[] = [];
+  if (datos.filtros) partes.push(`Mostrando las organizaciones del directorio con los <strong>filtros aplicados</strong> (${datos.filtros}). <button type="button" class="link-btn" onclick="mapaSinFiltros()">Ver todas</button>`);
+  partes.push('Los números agrupan organizaciones cercanas: acercate o tocá un grupo para separarlas.');
+  if (sinUbicacion > 0) partes.push(`${sinUbicacion.toLocaleString('es-AR')} ${sinUbicacion === 1 ? 'organización todavía no tiene' : 'organizaciones todavía no tienen'} ubicación cargada.`);
+  $('map-notice-txt').innerHTML = partes.join(' ');
 
-  const makeIcon = () => L.divIcon({
-    html: `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="36" viewBox="0 0 28 36">
-      <path d="M14 0C6.27 0 0 6.27 0 14c0 9.625 14 22 14 22S28 23.625 28 14C28 6.27 21.73 0 14 0z" fill="#3B24C8"/>
-      <circle cx="14" cy="14" r="7" fill="white"/>
-      <circle cx="14" cy="14" r="4" fill="#233DFF"/>
-    </svg>`,
-    className: '', iconSize: [28, 36], iconAnchor: [14, 36], popupAnchor: [0, -38],
-  });
-
-  for (const o of withLoc) {
-    const addr = buildAddress(o);
-    const query = [o.ciudad, o.provincia, o.pais].filter(Boolean).join(', ');
-    const coords = await geocodeAddress(query);
-    if (!coords) continue;
-
-    const u = getProfileById(o.uid);
-    const uName = u ? `${u.nombre} ${u.apellido}` : '—';
-
+  for (const p of datos.puntos) {
+    const lugar = [p.ciudad, p.provincia].filter(Boolean).join(', ');
     const popupHtml = `<div class="map-popup">
       <div class="map-popup-head">
-        <div class="map-popup-media">${logoOrAvatar(o, 38)}</div>
+        <div class="map-popup-media">${p.logo ? `<img src="${esc(p.logo)}" class="org-logo-img logo-38" alt="">` : `<div class="avatar logo-38" aria-hidden="true">${esc(ini(p.nombre))}</div>`}</div>
         <div class="map-popup-info">
-          <div class="map-popup-name">${esc(o.nombre)}</div>
-          <div class="map-popup-sector">${esc(o.sector)}</div>
+          <div class="map-popup-name">${esc(p.nombre)}</div>
+          <div class="map-popup-sector">${esc(p.sector_id ? nombreSector(p.sector_id) : '')}</div>
         </div>
         <div class="u-clearfix"></div>
       </div>
-      <div class="map-popup-meta"><strong>Graduado:</strong> ${esc(uName)}</div>
-      <div class="map-popup-meta"><strong>Cargo:</strong> ${esc(o.cargo)}</div>
-      <div class="map-popup-addr">${esc(addr)}</div>
-      <button onclick="window._openDetail(${o.id})" class="map-popup-btn">
-        Ver detalle completo
-      </button>
+      <div class="map-popup-addr">${esc(lugar)}${p.precision === 'localidad' ? ' <span class="map-popup-aprox">(ubicación aproximada)</span>' : ''}</div>
+      <button onclick="window._openDetail(${p.id})" class="map-popup-btn">Ver detalle completo</button>
     </div>`;
-
-    const marker = L.marker([coords.lat, coords.lng], { icon: makeIcon() }).addTo(map);
-    marker.bindPopup(popupHtml, { maxWidth: 260, closeButton: true });
-    mapMarkers.push(marker);
+    const m = L.marker([p.lat, p.lng], { icon: pinIcon(L, p.precision === 'localidad'), title: p.nombre, alt: p.nombre, keyboard: true });
+    m.bindPopup(popupHtml, { maxWidth: 260, closeButton: true });
+    mapCluster.addLayer(m);
   }
+  mapCluster.addTo(map);
+  if (datos.puntos.length) map.fitBounds(mapCluster.getBounds(), { padding: [40, 40], maxZoom: 13 });
+};
 
-  if (mapMarkers.length > 0) {
-    const group = L.featureGroup(mapMarkers);
-    map.fitBounds(group.getBounds().pad(0.2));
-  }
+window.mapaSinFiltros = function () {
+  limpiarFiltrosDirectorio();
+  window.renderMapa().catch(e => console.error('No se pudo cargar el mapa:', e));
 };
 
 window._openDetail = function (id) {
@@ -916,7 +815,7 @@ window.openDetail = function (id) {
         <div>
           <div class="detail-name">${esc(o.referente)}</div>
           <div class="detail-role">${esc(o.cargo)}</div>
-          <div class="detail-sector">${esc(o.sector)}</div>
+          <div class="detail-sector">${esc([o.sectorId ? nombreSector(o.sectorId) : o.sector, o.sector2Id ? nombreSector(o.sector2Id) : ''].filter(Boolean).join(' · '))}</div>
         </div>
       </div>
       <div class="detail-meta-row"><i class="ti ti-id detail-icon"></i>CUIT: <strong>${esc(o.cuit)}</strong></div>
@@ -1192,7 +1091,7 @@ window.startEdit = function (id) {
   $('form-btn-label').textContent = 'Guardar cambios';
 
   const fields: Record<string, string | null> = {
-    'f-tipo': o.tipo, 'f-cuit': o.cuit, 'f-nombre': o.nombre, 'f-sector': o.sector,
+    'f-tipo': o.tipo, 'f-cuit': o.cuit, 'f-nombre': o.nombre,
     'f-email-org': o.emailOrg, 'f-tel': o.tel, 'f-web': o.web,
     'f-calle': o.calle, 'f-ciudad': o.ciudad, 'f-provincia': o.provincia, 'f-pais': o.pais,
     'f-referente': o.referente, 'f-cargo': o.cargo, 'f-desc': o.desc,
@@ -1218,6 +1117,7 @@ window.startEdit = function (id) {
   $('cuit-check').textContent = '';
   $('form-msg').style.display = 'none';
   window.showScreen('registrar');
+  void cargarUbicacion(o);
 };
 
 window.cancelEdit = function () {
@@ -1234,7 +1134,7 @@ window.cancelEdit = function () {
 };
 
 function resetForm(): void {
-  ['nombre', 'cuit', 'sector', 'calle', 'ciudad', 'provincia', 'pais', 'referente', 'cargo', 'email-org', 'tel', 'web', 'desc'].forEach(id => {
+  ['nombre', 'cuit', 'calle', 'ciudad', 'provincia', 'pais', 'referente', 'cargo', 'email-org', 'tel', 'web', 'desc'].forEach(id => {
     const el = document.getElementById('f-' + id) as HTMLInputElement | HTMLTextAreaElement | null;
     if (el) el.value = '';
   });
@@ -1249,6 +1149,7 @@ function resetForm(): void {
   (Object.keys(tags) as TagType[]).forEach(k => { tags[k] = []; renderTags(k); });
   formItems = [];
   renderItemEditors();
+  resetUbicacion();
   $('form-msg').style.display = 'none';
 }
 
@@ -1265,13 +1166,14 @@ window.guardarOrg = async function () {
   if (!nombre) { showFormMsg('El nombre de la organización es obligatorio.', 'err'); return; }
   if (!cuitRaw) { showFormMsg('El CUIT es obligatorio.', 'err'); return; }
   if (!isValidCuit(cuitRaw)) { showFormMsg('El CUIT debe tener 11 dígitos.', 'err'); return; }
-  if (webRaw && !isValidUrl(webRaw)) { showFormMsg('El sitio web debe empezar con http:// o https://', 'err'); return; }
-
   const editId = $input('f-edit-id').value;
   const digits = normCuit(cuitRaw);
   if (orgs.find(o => normCuit(o.cuit) === digits && String(o.id) !== editId)) {
     showFormMsg('Ya existe una empresa registrada con ese CUIT.', 'err'); return;
   }
+  if (webRaw && !isValidUrl(webRaw)) { showFormMsg('El sitio web debe empezar con http:// o https://', 'err'); return; }
+  const ubic = leerUbicacion();
+  if ('error' in ubic) { showFormMsg(ubic.error, 'err'); return; }
 
   const submitBtn = $button('form-submit-btn');
   submitBtn.disabled = true;
@@ -1286,10 +1188,9 @@ window.guardarOrg = async function () {
       cuit: cuitRaw,
       tipo: $select('f-tipo').value,
       nombre,
-      sector: $input('f-sector').value.trim(),
+      ...ubic.datos,
       calle: $input('f-calle').value.trim(),
       ciudad: $input('f-ciudad').value.trim(),
-      provincia: $input('f-provincia').value.trim(),
       pais: $input('f-pais').value.trim() || 'Argentina',
       referente: $input('f-referente').value.trim(),
       cargo: $input('f-cargo').value.trim(),
@@ -1320,6 +1221,7 @@ window.guardarOrg = async function () {
       showFormMsg('✓ Empresa registrada y guardada correctamente. Podés verla en "Mis empresas".', 'ok');
     }
 
+    limpiarCacheDirectorio();
     await refreshData();
 
     if (editId) {
@@ -1355,42 +1257,11 @@ function showFormMsg(msg: string, type: 'err' | 'ok'): void {
 // ══════════════════════════════════════════════
 // EDITAR UBICACIÓN (modal rápido)
 // ══════════════════════════════════════════════
+// "Editar ubicación" abre el formulario de la empresa en la sección
+// Ubicación (localidad oficial + calle + marcador), igual que al editar.
 window.openEditUbicacion = function (id) {
-  const o = orgs.find(x => x.id === id);
-  if (!o) return;
-  $input('ub-id').value = String(id);
-  $input('ub-calle').value = o.calle || '';
-  $input('ub-ciudad').value = o.ciudad || '';
-  $input('ub-provincia').value = o.provincia || '';
-  $input('ub-pais').value = o.pais || 'Argentina';
-  $('ub-msg').style.display = 'none';
-  $('modal-ub-title').textContent = 'Ubicación: ' + o.nombre;
-  $('modal-ubicacion').classList.add('open');
-};
-
-window.guardarUbicacion = async function () {
-  const id = parseInt($input('ub-id').value, 10);
-  const payload = {
-    calle: $input('ub-calle').value.trim(),
-    ciudad: $input('ub-ciudad').value.trim(),
-    provincia: $input('ub-provincia').value.trim(),
-    pais: $input('ub-pais').value.trim() || 'Argentina',
-  };
-  const msg = $('ub-msg');
-  try {
-    await Empresas.updateEmpresa(id, payload);
-    await refreshData();
-    if (leafletMap) { leafletMap.remove(); leafletMap = null; mapMarkers = []; }
-    msg.textContent = '✓ Ubicación guardada.';
-    msg.className = 'form-msg ok';
-    msg.style.display = 'block';
-    window.renderAdmin();
-    setTimeout(() => window.closeModal('modal-ubicacion'), 1200);
-  } catch (e) {
-    msg.textContent = friendlyError(e);
-    msg.className = 'form-msg err';
-    msg.style.display = 'block';
-  }
+  window.startEdit(id);
+  setTimeout(() => document.getElementById('f-ciudad')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 120);
 };
 
 // ══════════════════════════════════════════════
@@ -1520,89 +1391,10 @@ function renderTags(type: TagType): void {
 // ══════════════════════════════════════════════
 // ADMIN
 // ══════════════════════════════════════════════
-function renderAdminOrgsUserFilterOptions(): void {
-  const sel = $select('admin-filter-usuario');
-  const prev = sel.value;
-  sel.innerHTML = '<option value="">Todos los usuarios</option>' +
-    profiles.map(u => `<option value="${u.id}">${esc(u.nombre + ' ' + (u.apellido || ''))} (${esc(u.email || '')})</option>`).join('');
-  if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
-}
-
 window.renderAdmin = function () {
   if (!currentProfile || currentProfile.role !== 'admin') return;
-
-  renderAdminOrgsUserFilterOptions();
-  const filterUserId = $select('admin-filter-usuario').value;
-  const filterRol = $select('admin-filter-rol-usuario').value;
-  const oq = ($input('admin-search-orgs').value || '').toLowerCase();
-
-  const filteredOrgs = orgs.filter(o => {
-    if (filterUserId) {
-      if (filterRol === 'principal' && o.uid !== filterUserId) return false;
-      if (filterRol === 'asociado' && !asociaciones.some(a => a.empresa_id === o.id && a.user_id === filterUserId)) return false;
-      if (filterRol === 'cualquiera' && !esUsuarioDeEmpresa(o, filterUserId)) return false;
-    }
-    if (oq && ![o.nombre, o.cuit, o.sector].join(' ').toLowerCase().includes(oq)) return false;
-    return true;
-  });
-
-  $('admin-orgs-count').textContent = String(filteredOrgs.length);
-  $('admin-orgs-body').innerHTML = filteredOrgs.map(o => `
-    <tr>
-      <td>${logoOrAvatar(o, 30)}</td>
-      <td><strong>${esc(o.nombre)}</strong></td>
-      <td class="muted-sm">${esc(o.cuit)}</td>
-      <td class="td-sm">${esc(o.sector)}</td>
-      <td class="td-sm">${esc(o.referente)}</td>
-      <td class="td-sm">${esc([o.ciudad, o.provincia].filter(Boolean).join(', ')) || '—'}</td>
-      <td><div class="action-btns">
-        <button class="btn-edit-inline" onclick="startEdit(${o.id})" title="Editar empresa"><i class="ti ti-pencil"></i></button>
-        <button class="btn-loc" onclick="openEditUbicacion(${o.id})" title="Editar ubicación"><i class="ti ti-map-pin"></i></button>
-        <button class="btn-out btn-icon" onclick="openAsignarUsuarios(${o.id})" title="Usuarios asociados"><i class="ti ti-users"></i></button>
-        <button class="btn-danger" onclick="deleteOrg(${o.id})" title="Eliminar empresa (esta acción no se puede deshacer)"><i class="ti ti-trash"></i></button>
-      </div></td>
-    </tr>`).join('');
-
-  if (!filteredOrgs.length) {
-    $('admin-orgs-body').innerHTML = '<tr><td colspan="7" class="empty">Sin resultados para ese criterio.</td></tr>';
-  }
-
-  const uq = ($input('admin-search-users').value || '').toLowerCase();
-  const filteredUsers = profiles.filter(u => {
-    if (!uq) return true;
-    return [u.nombre, u.apellido, u.email, u.tel].join(' ').toLowerCase().includes(uq);
-  });
-  $('admin-users-count').textContent = String(filteredUsers.length);
-
-  $('admin-users-body').innerHTML = filteredUsers.map(u => {
-    const isSelf = u.id === currentProfile!.id;
-    const isAdmin = u.role === 'admin';
-    const soyWebmaster = !!currentProfile!.is_webmaster;
-    // Solo un webmaster otorga o quita el permiso, solo a otros admins
-    // (la base lo hace cumplir igual, ver sql/012).
-    const btnWebmaster = soyWebmaster && isAdmin && !isSelf
-      ? `<button class="btn-out" onclick="toggleWebmaster('${u.id}', ${!u.is_webmaster})">${u.is_webmaster ? 'Quitar webmaster' : 'Hacer webmaster'}</button>`
-      : '';
-    return `
-    <tr>
-      <td><strong>${esc(u.nombre + ' ' + (u.apellido || ''))}</strong>${isSelf ? ' <span class="badge-self">Vos</span>' : ''}</td>
-      <td class="td-sm">${esc(u.email || '—')}</td>
-      <td class="td-sm">${esc(u.tel || '—')}</td>
-      <td class="td-sm">${orgs.filter(o => esUsuarioDeEmpresa(o, u.id)).length}</td>
-      <td><span class="role-badge ${isAdmin ? 'role-badge--admin' : 'role-badge--user'}">${isAdmin ? 'Admin' : 'Usuario'}</span>${u.is_webmaster ? ' <span class="role-badge role-badge--webmaster">Webmaster</span>' : ''}</td>
-      <td><div class="action-btns">
-        <button class="btn-edit-inline" onclick="openEditarUsuario('${u.id}')" title="Editar usuario (nombre, email, contraseña...)"><i class="ti ti-pencil"></i></button>
-        ${isSelf
-          ? '<span class="muted-sm">No podés cambiar tu propio rol</span>'
-          : `<button class="btn-out" onclick="toggleUserRole('${u.id}','${isAdmin ? 'user' : 'admin'}')">${isAdmin ? 'Quitar admin' : 'Hacer admin'}</button>`}
-        ${btnWebmaster}
-      </div></td>
-    </tr>`;
-  }).join('');
-
-  if (!filteredUsers.length) {
-    $('admin-users-body').innerHTML = '<tr><td colspan="6" class="empty">Sin resultados para ese criterio.</td></tr>';
-  }
+  // Listas paginadas y filtros resueltos en la base: ver ui-admin.ts.
+  renderAdminUI();
 };
 
 window.toggleWebmaster = async function (userId, valor) {

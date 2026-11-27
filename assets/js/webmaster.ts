@@ -15,16 +15,16 @@ export interface FiltroBitacora {
 
 export const BITACORA_PAGINA = 100;
 
-export async function listBitacora(filtro: FiltroBitacora, offset = 0): Promise<BitacoraRow[]> {
+export async function listBitacora(filtro: FiltroBitacora, offset = 0, limite = BITACORA_PAGINA): Promise<{ filas: BitacoraRow[]; total: number }> {
   const supabase = await getSupabase();
-  let q = supabase.from('bitacora').select('*').order('created_at', { ascending: false }).order('id', { ascending: false });
+  let q = supabase.from('bitacora').select('*', { count: 'exact' }).order('created_at', { ascending: false }).order('id', { ascending: false });
   if (filtro.userId) q = q.eq('user_id', filtro.userId);
   if (filtro.accion) q = q.eq('accion', filtro.accion);
   if (filtro.desde) q = q.gte('created_at', new Date(filtro.desde + 'T00:00:00').toISOString());
   if (filtro.hasta) q = q.lt('created_at', new Date(new Date(filtro.hasta + 'T00:00:00').getTime() + 86_400_000).toISOString());
-  const { data, error } = await q.range(offset, offset + BITACORA_PAGINA - 1);
+  const { data, error, count } = await q.range(offset, offset + limite - 1);
   if (error) throw error;
-  return data;
+  return { filas: data, total: count ?? data.length };
 }
 
 export async function contactoResumen(): Promise<ContactoResumenRow[]> {

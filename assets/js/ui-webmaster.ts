@@ -5,23 +5,31 @@
 //    mensajes y fechas; nunca el contenido, que la base no le entrega).
 //  · Administración de categorías y subcategorías sugeridas.
 // ══════════════════════════════════════════════
-import * as Conexiones from './conexiones.ts';
 import * as Empresas from './empresas.ts';
 import * as Webmaster from './webmaster.ts';
-import * as Solicitudes from './solicitudes.ts';
-import { fraseSolicitud, nombreDestino, nombreOrigen } from './ui-solicitudes.ts';
+import { buscarEmpresas, filtrosVacios, limpiarCache, listSectores } from './directorio.ts';
+import { getSupabase } from './supabaseClient.ts';
+import { buscadorUsuario, paginadorHtml } from './ui-listas.ts';
 import { renderModeracionBlog } from './ui-blog.ts';
-import { app, fechaHora, nombreUsuario } from './contexto.ts';
-import { estadoNeutral, type EstadoNeutral } from './matching.ts';
+import { app, fechaHora } from './contexto.ts';
+import { etiquetaItem, type EstadoNeutral } from './matching.ts';
 import { esc, friendlyError, normalizeTagKey } from './utils.ts';
-import type { BitacoraRow, ConexionRow, ContactoResumenRow, SolicitudResumenRow, SolicitudRow } from './types.ts';
+import type { BitacoraRow, ConexionRow, SectorRow, SolicitudRow } from './types.ts';
 
 declare global {
   interface Window {
     renderWebmaster(): void;
     wmSeccion(el: HTMLElement, seccion: string): void;
     wmBuscarBitacora(): Promise<void>;
-    wmMasBitacora(): Promise<void>;
+    wmBitIr(n: number): void;
+    wmBitTam(n: number): void;
+    wmConIr(n: number): void;
+    wmConTam(n: number): void;
+    wmSolIr(n: number): void;
+    wmSolTam(n: number): void;
+    wmCrearSector(): Promise<void>;
+    wmGuardarSector(id: number): Promise<void>;
+    wmBorrarSector(id: number): Promise<void>;
     wmRenderConexiones(): void;
     wmRenderSolicitudes(): void;
     wmCrearCategoria(): Promise<void>;
@@ -32,13 +40,13 @@ declare global {
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
 
-let seccion: 'bitacora' | 'conexiones' | 'solicitudes' | 'blog' | 'categorias' = 'bitacora';
+type Seccion = 'bitacora' | 'conexiones' | 'solicitudes' | 'blog' | 'categorias' | 'sectores';
+let seccion: Seccion = 'bitacora';
 let bitacora: BitacoraRow[] = [];
-let bitacoraFin = false;
-let wmConexiones: ConexionRow[] = [];
-let wmContacto: ContactoResumenRow[] = [];
-let wmSolicitudes: SolicitudRow[] = [];
-let wmSolContacto: SolicitudResumenRow[] = [];
+const bit = { pagina: 1, tamano: 25, total: 0, cargada: false, pedido: 0, usuario: null as string | null };
+const con = { pagina: 1, tamano: 25, pedido: 0 };
+const sol = { pagina: 1, tamano: 25, pedido: 0 };
+let filtrosListos = false;
 
 // Acciones registradas en la bitácora (ver sql/012), con su texto.
 export const ACCIONES: Record<string, string> = {
@@ -169,18 +177,20 @@ export function describirEvento(r: BitacoraRow): string {
 window.wmSeccion = function (el, s) {
   document.querySelectorAll('#wm-secciones .chip').forEach(c => c.classList.remove('active'));
   el.classList.add('active');
-  seccion = s === 'conexiones' ? 'conexiones' : s === 'solicitudes' ? 'solicitudes' : s === 'blog' ? 'blog' : s === 'categorias' ? 'categorias' : 'bitacora';
+  seccion = (['conexiones', 'solicitudes', 'blog', 'categorias', 'sectores'] as const).find(x => x === s) || 'bitacora';
   window.renderWebmaster();
 };
 
 window.renderWebmaster = function () {
   const c = app();
   if (!c.currentProfile?.is_webmaster) return;
-  (['bitacora', 'conexiones', 'solicitudes', 'blog', 'categorias'] as const).forEach(s => $('wm-sec-' + s).classList.toggle('hidden', s !== seccion));
+  (['bitacora', 'conexiones', 'solicitudes', 'blog', 'categorias', 'sectores'] as const).forEach(s => $('wm-sec-' + s).classList.toggle('hidden', s !== seccion));
+  iniciarFiltros();
   if (seccion === 'bitacora') {
-    llenarFiltrosBitacora();
-    if (!bitacora.length && !bitacoraFin) void window.wmBuscarBitacora();
+    if (!bit.cargada) void window.wmBuscarBitacora();
     else renderBitacora();
+  } else if (seccion === 'sectores') {
+    void renderSectores();
   } else if (seccion === 'conexiones') {
     void cargarConexiones();
   } else if (seccion === 'solicitudes') {
@@ -193,53 +203,68 @@ window.renderWebmaster = function () {
 };
 
 // ─── Bitácora ──────────────────────────────────────────────────────
-function llenarFiltrosBitacora(): void {
-  const selU = $<HTMLSelectElement>('wm-f-usuario');
-  const prevU = selU.value;
-  selU.innerHTML = '<option value="">Todos los usuarios</option>' +
-    app().profiles.map(u => `<option value="${esc(u.id)}">${esc(`${u.nombre} ${u.apellido || ''}`.trim())} (${esc(u.email || '')})</option>`).join('');
-  if ([...selU.options].some(o => o.value === prevU)) selU.value = prevU;
+// Filtros: usuario con sugerencias (no una lista con todos), acción y
+// fechas. Se aplican solos al cambiar. Páginas numeradas.
+function iniciarFiltros(): void {
+  if (filtrosListos) return;
+  filtrosListos = true;
   const selA = $<HTMLSelectElement>('wm-f-accion');
-  if (selA.options.length <= 1) {
-    selA.innerHTML = '<option value="">Todas las acciones</option>' +
-      Object.entries(ACCIONES).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('');
-  }
+  selA.innerHTML = '<option value="">Todas las acciones</option>' +
+    Object.entries(ACCIONES).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('');
+  buscadorUsuario($<HTMLInputElement>('wm-f-usuario'), u => { bit.usuario = u?.id ?? null; void window.wmBuscarBitacora(); });
+  ['wm-f-accion', 'wm-f-desde', 'wm-f-hasta'].forEach(id => $(id).addEventListener('change', () => void window.wmBuscarBitacora()));
+  let tc: number | undefined;
+  $('wm-c-buscar').addEventListener('input', () => { window.clearTimeout(tc); tc = window.setTimeout(() => { con.pagina = 1; void cargarConexiones(); }, 250); });
+  $('wm-c-estado').addEventListener('change', () => { con.pagina = 1; void cargarConexiones(); });
+  let ts: number | undefined;
+  $('wm-s-buscar').addEventListener('input', () => { window.clearTimeout(ts); ts = window.setTimeout(() => { sol.pagina = 1; void cargarSolicitudes(); }, 250); });
+  $('wm-s-estado').addEventListener('change', () => { sol.pagina = 1; void cargarSolicitudes(); });
 }
 
 function filtroActual(): Webmaster.FiltroBitacora {
   return {
-    userId: $<HTMLSelectElement>('wm-f-usuario').value || undefined,
+    userId: bit.usuario || undefined,
     accion: $<HTMLSelectElement>('wm-f-accion').value || undefined,
     desde: $<HTMLInputElement>('wm-f-desde').value || undefined,
     hasta: $<HTMLInputElement>('wm-f-hasta').value || undefined,
   };
 }
 
-window.wmBuscarBitacora = async function () {
-  $('wm-bit-body').innerHTML = '<tr><td colspan="4" class="empty">Cargando…</td></tr>';
+async function cargarBitacora(): Promise<void> {
+  const mio = ++bit.pedido;
+  $('wm-bit-body').setAttribute('aria-busy', 'true');
   try {
-    bitacora = await Webmaster.listBitacora(filtroActual(), 0);
-    bitacoraFin = bitacora.length < Webmaster.BITACORA_PAGINA;
+    const r = await Webmaster.listBitacora(filtroActual(), (bit.pagina - 1) * bit.tamano, bit.tamano);
+    if (mio !== bit.pedido) return;
+    bitacora = r.filas;
+    bit.total = r.total;
+    bit.cargada = true;
     renderBitacora();
   } catch (e) {
-    $('wm-bit-body').innerHTML = `<tr><td colspan="4" class="empty">${esc(friendlyError(e))}</td></tr>`;
+    if (mio === bit.pedido) $('wm-bit-body').innerHTML = `<tr><td colspan="4" class="empty">${esc(friendlyError(e))}</td></tr>`;
+  } finally {
+    $('wm-bit-body').removeAttribute('aria-busy');
   }
+}
+
+window.wmBuscarBitacora = async function () {
+  bit.pagina = 1;
+  await cargarBitacora();
 };
 
-window.wmMasBitacora = async function () {
-  try {
-    const mas = await Webmaster.listBitacora(filtroActual(), bitacora.length);
-    bitacora = bitacora.concat(mas);
-    bitacoraFin = mas.length < Webmaster.BITACORA_PAGINA;
-    renderBitacora();
-  } catch (e) {
-    alert(friendlyError(e));
-  }
+const pagina = (est: { pagina: number }, cargar: () => Promise<void>, ancla: string) => (n: number) => {
+  est.pagina = Math.max(1, n);
+  void cargar().then(() => $(ancla).scrollIntoView({ block: 'start', behavior: 'smooth' }));
 };
+const tamano = (est: { pagina: number; tamano: number }, cargar: () => Promise<void>) => (n: number) => {
+  est.tamano = n; est.pagina = 1; void cargar();
+};
+window.wmBitIr = pagina(bit, cargarBitacora, 'wm-sec-bitacora');
+window.wmBitTam = tamano(bit, cargarBitacora);
 
 function renderBitacora(): void {
-  $('wm-bit-count').textContent = String(bitacora.length) + (bitacoraFin ? '' : '+');
-  $('wm-bit-mas').classList.toggle('hidden', bitacoraFin);
+  $('wm-bit-count').textContent = bit.total.toLocaleString('es-AR');
+  $('wm-bit-pag').innerHTML = bit.total > 25 ? paginadorHtml({ id: 'pag-wm-bit', pagina: bit.pagina, tamano: bit.tamano, total: bit.total, onIr: 'wmBitIr', onTamano: 'wmBitTam', etiqueta: 'la bitácora' }) : '';
   $('wm-bit-body').innerHTML = bitacora.length
     ? bitacora.map(r => `<tr>
         <td class="td-sm nowrap">${esc(fechaHora(r.created_at))}</td>
@@ -259,73 +284,82 @@ const ESTADO_NEUTRAL_TXT: Record<EstadoNeutral, string> = {
   rechazada: 'Rechazada',
 };
 
+interface ConexionWm extends ConexionRow {
+  necesita_nombre: string | null; ofrece_nombre: string | null; categoria_nombre: string | null; rechazada_empresa_nombre: string | null;
+  estado: EstadoNeutral; acepta_necesita_nombre: string | null; acepta_ofrece_nombre: string | null;
+  contacto: { empresa_id: number; cantidad: number; primer_mensaje: string; ultimo_mensaje: string }[] | null;
+}
+
+async function rpcLista<T>(fn: 'wm_buscar_conexiones' | 'wm_buscar_solicitudes', p: Record<string, unknown>): Promise<{ total: number; items: T[] }> {
+  const supabase = await getSupabase();
+  const { data, error } = await supabase.rpc(fn, { p });
+  if (error) throw error;
+  return data as { total: number; items: T[] };
+}
+
 async function cargarConexiones(): Promise<void> {
-  $('wm-con-body').innerHTML = '<tr><td colspan="7" class="empty">Cargando…</td></tr>';
+  const mio = ++con.pedido;
+  const body = $('wm-con-body');
+  body.setAttribute('aria-busy', 'true');
   try {
-    [wmConexiones, wmContacto] = await Promise.all([Conexiones.listConexiones(), Webmaster.contactoResumen()]);
-    window.wmRenderConexiones();
+    const r = await rpcLista<ConexionWm>('wm_buscar_conexiones', {
+      q: $<HTMLInputElement>('wm-c-buscar').value, estado: $<HTMLSelectElement>('wm-c-estado').value,
+      limite: con.tamano, desde: (con.pagina - 1) * con.tamano,
+    });
+    if (mio !== con.pedido) return;
+    $('wm-con-count').textContent = r.total.toLocaleString('es-AR');
+    $('wm-con-pag').innerHTML = r.total > 25 ? paginadorHtml({ id: 'pag-wm-con', pagina: con.pagina, tamano: con.tamano, total: r.total, onIr: 'wmConIr', onTamano: 'wmConTam', etiqueta: 'conexiones' }) : '';
+    body.innerHTML = r.items.length ? r.items.map(filaConexion).join('') : '<tr><td colspan="7" class="empty">No hay conexiones para ese criterio.</td></tr>';
   } catch (e) {
-    $('wm-con-body').innerHTML = `<tr><td colspan="7" class="empty">${esc(friendlyError(e))}</td></tr>`;
+    if (mio === con.pedido) body.innerHTML = `<tr><td colspan="7" class="empty">${esc(friendlyError(e))}</td></tr>`;
+  } finally {
+    body.removeAttribute('aria-busy');
   }
 }
+window.wmConIr = pagina(con, cargarConexiones, 'wm-sec-conexiones');
+window.wmConTam = tamano(con, cargarConexiones);
+window.wmRenderConexiones = function () { con.pagina = 1; void cargarConexiones(); };
 
-function aceptacion(at: string | null, por: string | null): string {
-  return at ? `${esc(fechaHora(at))}<div class="muted-sm">${esc(nombreUsuario(por))}</div>` : '<span class="muted-sm">—</span>';
+function aceptacion(at: string | null, nombre: string | null): string {
+  return at ? `${esc(fechaHora(at))}<div class="muted-sm">${esc(nombre || 'Usuario')}</div>` : '<span class="muted-sm">—</span>';
 }
 
-window.wmRenderConexiones = function () {
-  const c = app();
-  const orgName = (id: number) => c.orgs.find(o => o.id === id)?.nombre || `Empresa #${id}`;
-  const fEstado = $<HTMLSelectElement>('wm-c-estado').value;
-  const q = ($<HTMLInputElement>('wm-c-buscar').value || '').toLowerCase();
-  const filas = wmConexiones.filter(r => {
-    const est = estadoNeutral(r);
-    if (fEstado === 'match_sin_contacto') {
-      if (est !== 'match' || wmContacto.some(x => x.conexion_id === r.id)) return false;
-    } else if (fEstado === 'pendiente') {
-      if (est !== 'acepto_necesita' && est !== 'acepto_ofrece') return false;
-    } else if (fEstado && est !== fEstado) return false;
-    if (!q) return true;
-    return [orgName(r.empresa_necesita_id), orgName(r.empresa_ofrece_id), c.categoriaById(r.categoria_id)?.nombre || ''].join(' ').toLowerCase().includes(q);
-  });
-  $('wm-con-count').textContent = String(filas.length);
-  $('wm-con-body').innerHTML = filas.length
-    ? filas.map(r => {
-        const est = estadoNeutral(r);
-        const cont = wmContacto.filter(x => x.conexion_id === r.id);
-        let contacto = '<span class="muted-sm">—</span>';
-        if (est === 'match') {
-          if (!cont.length) {
-            contacto = '<span class="wm-contacto wm-contacto--no">Sin contacto</span>';
-          } else {
-            const porEmp = (id: number) => cont.find(x => x.empresa_id === id)?.cantidad || 0;
-            const primero = cont.map(x => x.primer_mensaje).sort()[0];
-            const ultimo = cont.map(x => x.ultimo_mensaje).sort().slice(-1)[0];
-            contacto = `<span class="wm-contacto wm-contacto--si">Hubo contacto</span>
-              <div class="muted-sm">${esc(orgName(r.empresa_necesita_id))}: ${porEmp(r.empresa_necesita_id)} msj · ${esc(orgName(r.empresa_ofrece_id))}: ${porEmp(r.empresa_ofrece_id)} msj</div>
-              <div class="muted-sm">Primero: ${esc(fechaHora(primero))} · Último: ${esc(fechaHora(ultimo))}</div>`;
-          }
-        }
-        return `<tr>
-          <td class="td-sm"><strong>${esc(orgName(r.empresa_necesita_id))}</strong></td>
-          <td class="td-sm"><strong>${esc(orgName(r.empresa_ofrece_id))}</strong></td>
-          <td class="td-sm">${esc(c.categoriaById(r.categoria_id)?.nombre || '—')}</td>
-          <td class="td-sm"><span class="cx-badge cx-badge--${est === 'match' ? 'match' : est === 'rechazada' ? 'rechazada' : est === 'sugerida' ? 'sugerida' : 'esperando_otra'}">${ESTADO_NEUTRAL_TXT[est]}</span>
-            ${r.match_at ? `<div class="muted-sm">${esc(fechaHora(r.match_at))}</div>` : ''}
-            ${r.rechazada_at ? `<div class="muted-sm">por ${esc(orgName(r.rechazada_empresa_id || 0))}, ${esc(fechaHora(r.rechazada_at))}</div>` : ''}</td>
-          <td class="td-sm">${aceptacion(r.acepta_necesita_at, r.acepta_necesita_por)}</td>
-          <td class="td-sm">${aceptacion(r.acepta_ofrece_at, r.acepta_ofrece_por)}</td>
-          <td class="td-sm">${contacto}</td>
-        </tr>`;
-      }).join('')
-    : '<tr><td colspan="7" class="empty">No hay conexiones para ese criterio.</td></tr>';
-};
+function filaConexion(r: ConexionWm): string {
+  const est = r.estado;
+  const nec = r.necesita_nombre || `Empresa #${r.empresa_necesita_id}`;
+  const ofe = r.ofrece_nombre || `Empresa #${r.empresa_ofrece_id}`;
+  const cont = r.contacto || [];
+  let contacto = '<span class="muted-sm">—</span>';
+  if (est === 'match') {
+    if (!cont.length) {
+      contacto = '<span class="wm-contacto wm-contacto--no">Sin contacto</span>';
+    } else {
+      const porEmp = (id: number) => cont.find(x => x.empresa_id === id)?.cantidad || 0;
+      const primero = cont.map(x => x.primer_mensaje).sort()[0];
+      const ultimo = cont.map(x => x.ultimo_mensaje).sort().slice(-1)[0];
+      contacto = `<span class="wm-contacto wm-contacto--si">Hubo contacto</span>
+        <div class="muted-sm">${esc(nec)}: ${porEmp(r.empresa_necesita_id)} msj · ${esc(ofe)}: ${porEmp(r.empresa_ofrece_id)} msj</div>
+        <div class="muted-sm">Primero: ${esc(fechaHora(primero))} · Último: ${esc(fechaHora(ultimo))}</div>`;
+    }
+  }
+  return `<tr>
+    <td class="td-sm"><strong>${esc(nec)}</strong></td>
+    <td class="td-sm"><strong>${esc(ofe)}</strong></td>
+    <td class="td-sm">${esc(r.categoria_nombre || '—')}</td>
+    <td class="td-sm"><span class="cx-badge cx-badge--${est === 'match' ? 'match' : est === 'rechazada' ? 'rechazada' : est === 'sugerida' ? 'sugerida' : 'esperando_otra'}">${ESTADO_NEUTRAL_TXT[est]}</span>
+      ${r.match_at ? `<div class="muted-sm">${esc(fechaHora(r.match_at))}</div>` : ''}
+      ${r.rechazada_at ? `<div class="muted-sm">por ${esc(r.rechazada_empresa_nombre || 'una empresa')}, ${esc(fechaHora(r.rechazada_at))}</div>` : ''}</td>
+    <td class="td-sm">${aceptacion(r.acepta_necesita_at, r.acepta_necesita_nombre)}</td>
+    <td class="td-sm">${aceptacion(r.acepta_ofrece_at, r.acepta_ofrece_nombre)}</td>
+    <td class="td-sm">${contacto}</td>
+  </tr>`;
+}
 
 // ─── Solicitudes ───────────────────────────────────────────────────
-// Hubo contacto = alguna de las partes escribió después de aceptada (el
-// mensaje inicial no cuenta).
-function huboContacto(s: SolicitudRow, cont: SolicitudResumenRow[]): boolean {
-  return !!s.respondida_at && cont.some(x => new Date(x.ultimo_mensaje).getTime() > new Date(s.respondida_at!).getTime());
+interface SolicitudWm extends SolicitudRow {
+  categoria_nombre: string | null; destino_nombre: string | null; origen_nombre: string | null;
+  enviada_por_nombre: string | null; respondida_por_nombre: string | null; hubo_contacto: boolean;
+  contacto: { lado: 'origen' | 'destino'; cantidad: number; primer_mensaje: string; ultimo_mensaje: string }[] | null;
 }
 
 const SOL_ESTADO_TXT: Record<SolicitudRow['estado'], string> = {
@@ -333,54 +367,133 @@ const SOL_ESTADO_TXT: Record<SolicitudRow['estado'], string> = {
 };
 
 async function cargarSolicitudes(): Promise<void> {
-  $('wm-sol-body').innerHTML = '<tr><td colspan="6" class="empty">Cargando…</td></tr>';
+  const mio = ++sol.pedido;
+  const body = $('wm-sol-body');
+  body.setAttribute('aria-busy', 'true');
   try {
-    [wmSolicitudes, wmSolContacto] = await Promise.all([Solicitudes.listSolicitudes(), Solicitudes.resumenWebmaster()]);
-    window.wmRenderSolicitudes();
+    const r = await rpcLista<SolicitudWm>('wm_buscar_solicitudes', {
+      q: $<HTMLInputElement>('wm-s-buscar').value, estado: $<HTMLSelectElement>('wm-s-estado').value,
+      limite: sol.tamano, desde: (sol.pagina - 1) * sol.tamano,
+    });
+    if (mio !== sol.pedido) return;
+    $('wm-sol-count').textContent = r.total.toLocaleString('es-AR');
+    $('wm-sol-pag').innerHTML = r.total > 25 ? paginadorHtml({ id: 'pag-wm-sol', pagina: sol.pagina, tamano: sol.tamano, total: r.total, onIr: 'wmSolIr', onTamano: 'wmSolTam', etiqueta: 'solicitudes' }) : '';
+    body.innerHTML = r.items.length ? r.items.map(filaSolicitud).join('') : '<tr><td colspan="6" class="empty">No hay solicitudes para ese criterio.</td></tr>';
   } catch (e) {
-    $('wm-sol-body').innerHTML = `<tr><td colspan="6" class="empty">${esc(friendlyError(e))}</td></tr>`;
+    if (mio === sol.pedido) body.innerHTML = `<tr><td colspan="6" class="empty">${esc(friendlyError(e))}</td></tr>`;
+  } finally {
+    body.removeAttribute('aria-busy');
+  }
+}
+window.wmSolIr = pagina(sol, cargarSolicitudes, 'wm-sec-solicitudes');
+window.wmSolTam = tamano(sol, cargarSolicitudes);
+window.wmRenderSolicitudes = function () { sol.pagina = 1; void cargarSolicitudes(); };
+
+function filaSolicitud(s: SolicitudWm): string {
+  const cont = s.contacto || [];
+  const n = (lado: 'origen' | 'destino') => cont.find(x => x.lado === lado)?.cantidad || 0;
+  const origen = s.origen_nombre || '—';
+  const destino = s.destino_nombre || '—';
+  let contacto = '<span class="muted-sm">—</span>';
+  if (s.estado === 'aceptada') {
+    contacto = s.hubo_contacto
+      ? `<span class="wm-contacto wm-contacto--si">Hubo contacto</span>
+         <div class="muted-sm">${esc(origen)}: ${n('origen')} msj · ${esc(destino)}: ${n('destino')} msj</div>
+         <div class="muted-sm">Último: ${esc(fechaHora(cont.map(x => x.ultimo_mensaje).sort().slice(-1)[0]))}</div>`
+      : '<span class="wm-contacto wm-contacto--no">Sin contacto</span>';
+  } else if (n('origen')) {
+    contacto = '<span class="muted-sm">Con mensaje inicial</span>';
+  }
+  const badge = s.estado === 'aceptada' ? 'match' : s.estado === 'pendiente' ? 'esperando_otra' : 'rechazada';
+  return `<tr>
+    <td class="td-sm nowrap">${esc(fechaHora(s.created_at))}</td>
+    <td class="td-sm"><strong>${esc(origen)}</strong><div class="muted-sm">${esc(s.enviada_por_nombre || '')}</div></td>
+    <td class="td-sm"><strong>${esc(destino)}</strong></td>
+    <td class="td-sm">${s.tipo === 'conseguir' ? 'Quiere conseguir' : 'Ofrece'} <span class="tag ${s.tipo === 'conseguir' ? 'tag-offer' : 'tag-need'}">${esc(etiquetaItem(s.categoria_nombre || '?', s.subcategoria))}</span></td>
+    <td class="td-sm"><span class="cx-badge cx-badge--${badge}">${SOL_ESTADO_TXT[s.estado]}</span>
+      ${s.respondida_at ? `<div class="muted-sm">${esc(fechaHora(s.respondida_at))} · ${esc(s.respondida_por_nombre || '')}</div>` : ''}</td>
+    <td class="td-sm">${contacto}</td>
+  </tr>`;
+}
+
+// ─── Sectores ──────────────────────────────────────────────────────
+async function renderSectores(): Promise<void> {
+  const body = $('wm-sec-body');
+  try {
+    const [secs, r] = await Promise.all([listSectores(true), buscarEmpresas(filtrosVacios(), { limite: 1 })]);
+    $('wm-sec-count').textContent = String(secs.length);
+    body.innerHTML = secs.map((sc: SectorRow) => {
+      const uso = r.facetas.sectores[sc.id] || 0;
+      return `<tr>
+        <td><input class="form-input wm-orden" type="number" min="0" max="999" id="wm-sec-orden-${sc.id}" value="${sc.orden}" aria-label="Orden de ${esc(sc.nombre)}"></td>
+        <td><input class="form-input" id="wm-sec-nombre-${sc.id}" value="${esc(sc.nombre)}" maxlength="80" aria-label="Nombre del sector"></td>
+        <td class="td-sm">${uso}</td>
+        <td><div class="action-btns">
+          <button class="btn-edit-inline" onclick="wmGuardarSector(${sc.id})" title="Guardar cambios" aria-label="Guardar ${esc(sc.nombre)}"><i class="ti ti-device-floppy"></i></button>
+          <button class="btn-danger" onclick="wmBorrarSector(${sc.id})" ${uso ? 'disabled title="No se puede borrar: hay organizaciones en este sector"' : 'title="Borrar sector"'} aria-label="Borrar ${esc(sc.nombre)}"><i class="ti ti-trash"></i></button>
+        </div></td>
+      </tr>`;
+    }).join('');
+  } catch (e) {
+    body.innerHTML = `<tr><td colspan="4" class="empty">${esc(friendlyError(e))}</td></tr>`;
   }
 }
 
-window.wmRenderSolicitudes = function () {
-  const c = app();
-  const fEstado = $<HTMLSelectElement>('wm-s-estado').value;
-  const q = ($<HTMLInputElement>('wm-s-buscar').value || '').toLowerCase();
-  const filas = wmSolicitudes.filter(s => {
-    const cont = wmSolContacto.filter(x => x.solicitud_id === s.id);
-    if (fEstado === 'aceptada_sin_contacto') {
-      if (s.estado !== 'aceptada' || huboContacto(s, cont)) return false;
-    } else if (fEstado && s.estado !== fEstado) return false;
-    if (!q) return true;
-    return [nombreOrigen(s), nombreDestino(s), c.categoriaById(s.categoria_id)?.nombre || '', s.subcategoria].join(' ').toLowerCase().includes(q);
-  });
-  $('wm-sol-count').textContent = String(filas.length);
-  $('wm-sol-body').innerHTML = filas.length
-    ? filas.map(s => {
-        const cont = wmSolContacto.filter(x => x.solicitud_id === s.id);
-        const n = (lado: 'origen' | 'destino') => cont.find(x => x.lado === lado)?.cantidad || 0;
-        let contacto = '<span class="muted-sm">—</span>';
-        if (s.estado === 'aceptada') {
-          contacto = huboContacto(s, cont)
-            ? `<span class="wm-contacto wm-contacto--si">Hubo contacto</span>
-               <div class="muted-sm">${esc(nombreOrigen(s))}: ${n('origen')} msj · ${esc(nombreDestino(s))}: ${n('destino')} msj</div>
-               <div class="muted-sm">Último: ${esc(fechaHora(cont.map(x => x.ultimo_mensaje).sort().slice(-1)[0]))}</div>`
-            : '<span class="wm-contacto wm-contacto--no">Sin contacto</span>';
-        } else if (n('origen')) {
-          contacto = '<span class="muted-sm">Con mensaje inicial</span>';
-        }
-        const badge = s.estado === 'aceptada' ? 'match' : s.estado === 'pendiente' ? 'esperando_otra' : 'rechazada';
-        return `<tr>
-          <td class="td-sm nowrap">${esc(fechaHora(s.created_at))}</td>
-          <td class="td-sm"><strong>${esc(nombreOrigen(s))}</strong><div class="muted-sm">${esc(nombreUsuario(s.enviada_por))}</div></td>
-          <td class="td-sm"><strong>${esc(nombreDestino(s))}</strong></td>
-          <td class="td-sm">${fraseSolicitud(s)}</td>
-          <td class="td-sm"><span class="cx-badge cx-badge--${badge}">${SOL_ESTADO_TXT[s.estado]}</span>
-            ${s.respondida_at ? `<div class="muted-sm">${esc(fechaHora(s.respondida_at))} · ${esc(nombreUsuario(s.respondida_por))}</div>` : ''}</td>
-          <td class="td-sm">${contacto}</td>
-        </tr>`;
-      }).join('')
-    : '<tr><td colspan="6" class="empty">No hay solicitudes para ese criterio.</td></tr>';
+function msgSector(t: string, tipo: 'ok' | 'err'): void {
+  const m = $('wm-sec-msg');
+  m.textContent = t; m.className = 'form-msg ' + tipo; m.style.display = 'block';
+}
+
+async function trasCambioSectores(texto: string): Promise<void> {
+  limpiarCache();
+  await listSectores(true);
+  msgSector(texto, 'ok');
+  await renderSectores();
+}
+
+window.wmCrearSector = async function () {
+  const nombre = $<HTMLInputElement>('wm-sec-nuevo').value.trim().replace(/\s+/g, ' ');
+  if (nombre.length < 2) { msgSector('Escribí el nombre del sector.', 'err'); return; }
+  if ((await listSectores()).some(x => normalizeTagKey(x.nombre) === normalizeTagKey(nombre))) { msgSector('Ya existe un sector con ese nombre.', 'err'); return; }
+  try {
+    const supabase = await getSupabase();
+    const secs = await listSectores();
+    const { error } = await supabase.from('sectores').insert({ nombre, orden: Math.max(0, ...secs.map(x => x.orden)) + 1 });
+    if (error) throw error;
+    $<HTMLInputElement>('wm-sec-nuevo').value = '';
+    await trasCambioSectores(`✓ Sector "${nombre}" creado.`);
+  } catch (e) {
+    msgSector(/duplicate|unique/i.test(String((e as Error).message)) ? 'Ya existe un sector con ese nombre.' : friendlyError(e), 'err');
+  }
+};
+
+window.wmGuardarSector = async function (id) {
+  const nombre = $<HTMLInputElement>(`wm-sec-nombre-${id}`).value.trim().replace(/\s+/g, ' ');
+  const orden = Number($<HTMLInputElement>(`wm-sec-orden-${id}`).value) || 0;
+  if (nombre.length < 2) { msgSector('El nombre del sector no puede quedar vacío.', 'err'); return; }
+  try {
+    const supabase = await getSupabase();
+    const { data, error } = await supabase.from('sectores').update({ nombre, orden }).eq('id', id).select('id');
+    if (error) throw error;
+    if (!data?.length) throw new Error('No se pudo guardar el sector.');
+    await trasCambioSectores('✓ Sector guardado. Las organizaciones ya lo muestran con el nombre nuevo.');
+  } catch (e) {
+    msgSector(/duplicate|unique/i.test(String((e as Error).message)) ? 'Ya existe un sector con ese nombre.' : friendlyError(e), 'err');
+  }
+};
+
+window.wmBorrarSector = async function (id) {
+  const nombre = $<HTMLInputElement>(`wm-sec-nombre-${id}`).value;
+  if (!confirm(`¿Borrar el sector "${nombre}"?`)) return;
+  try {
+    const supabase = await getSupabase();
+    const { data, error } = await supabase.from('sectores').delete().eq('id', id).select('id');
+    if (error) throw error;
+    if (!data?.length) throw new Error('No se pudo borrar el sector.');
+    await trasCambioSectores('✓ Sector borrado.');
+  } catch (e) {
+    msgSector(/foreign key|violates/i.test(String((e as Error).message)) ? 'No se puede borrar: hay organizaciones en este sector.' : friendlyError(e), 'err');
+  }
 };
 
 // ─── Categorías ────────────────────────────────────────────────────
@@ -479,11 +592,8 @@ window.wmBorrarCategoria = async function (id) {
 // Al salir de la app no debe quedar la bitácora de otro usuario en memoria.
 export function resetWebmasterUI(): void {
   bitacora = [];
-  bitacoraFin = false;
-  wmConexiones = [];
-  wmContacto = [];
-  wmSolicitudes = [];
-  wmSolContacto = [];
+  bit.cargada = false; bit.pagina = 1; bit.total = 0;
+  con.pagina = 1; sol.pagina = 1;
   seccion = 'bitacora';
   document.querySelectorAll('#wm-secciones .chip').forEach((c, i) => c.classList.toggle('active', i === 0));
 }

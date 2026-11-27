@@ -18,7 +18,7 @@ function makeEmpresa(nombre: string, uid: string | null, items: EmpresaItem[], u
   return {
     id: nextId++, uid, cuit: '30-00000000-0', tipo: 'Empresa', nombre, sector: '', calle: '', ciudad: '',
     provincia: '', pais: 'Argentina', referente: '', cargo: '', emailOrg: '', tel: '', web: '', desc: '',
-    logo: null, instalaciones: [], needsCovered: [], items, usuarios,
+    logo: null, instalaciones: [], needsCovered: [], sectorId: null, sector2Id: null, provinciaId: null, departamento: '', departamentoId: null, localidadId: null, lat: null, lng: null, ubicacionPrecision: null, items, usuarios,
   };
 }
 function row(n: Empresa, o: Empresa, cat: Categoria, extra: Partial<ConexionRow> = {}): ConexionRow {
