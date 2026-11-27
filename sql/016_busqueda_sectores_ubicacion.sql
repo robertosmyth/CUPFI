@@ -645,8 +645,8 @@ declare
   v_uid uuid := auth.uid();
   v_w text[] := public.fn_palabras(coalesce(p ->> 'q', ''));
   v_orden text := coalesce(nullif(p ->> 'orden', ''), 'nombre');
-  -- Igual que antes de 016: los admins no figuran salvo que se pida.
-  v_admins boolean := coalesce((p ->> 'incluir_admins')::boolean, false);
+  -- Los admins también son graduados: figuran salvo que se pida lo contrario.
+  v_admins boolean := coalesce((p ->> 'incluir_admins')::boolean, true);
   v_lim int := least(greatest(coalesce((p ->> 'limite')::int, 24), 1), 100);
   v_off int := greatest(coalesce((p ->> 'desde')::int, 0), 0);
   v_res jsonb;

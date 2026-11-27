@@ -626,7 +626,7 @@ window.renderDir = function () {
     $('stat-total').textContent = t.organizaciones.toLocaleString('es-AR');
     $('stat-sectores').textContent = String(t.sectores);
   }).catch(() => {});
-  $('stat-users').textContent = String(profiles.filter(u => u.role !== 'admin').length);
+  $('stat-users').textContent = String(profiles.length);
   // Admins y webmasters ven el total de la red; el resto, solo lo de sus
   // empresas (las coincidencias entre otras empresas son privadas).
   const verRed = puedeVerRed();

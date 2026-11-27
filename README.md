@@ -389,6 +389,7 @@ Qué agrega:
   no responde, se puede escribir a mano y marcar el punto en el mapa. Las
   coordenadas quedan guardadas: el mapa ya no depende de buscar direcciones
   cada vez y agrupa los puntos cercanos.
+- **Graduados** incluye también a los administradores (son graduados).
 - **Admin y Webmaster** con páginas numeradas (25/50/100 por página) y
   buscador de usuarios con sugerencias en lugar de listas con todos los
   usuarios.
