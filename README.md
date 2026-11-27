@@ -41,6 +41,7 @@ CUPFI/
 │       ├── ui-admin.ts        # Pantalla Admin con búsqueda, filtros y páginas
 │       ├── ui-graduados.ts    # Directorio de graduados (búsqueda y "Ver más")
 │       ├── ui-listas.ts       # Paginador y buscador de usuarios con sugerencias
+│       ├── paginar.ts         # Lecturas completas en tandas (sin el corte de 1000 filas)
 │       ├── ui-guia.ts         # Guía tipo chatbot (primer ingreso + preguntas frecuentes)
 │       ├── utils.ts           # Helpers (escape HTML, validaciones, mensajes de error)
 │       ├── main.ts            # UI: navegación, renderizado, listeners
@@ -54,6 +55,7 @@ CUPFI/
 │   ├── 014_blog.sql                       # Blog: publicaciones, fotos/videos, comentarios, me gusta, moderación
 │   ├── 015_normas_seguridad.sql           # Normas: contacto personal protegido, links seguros, claves temporales
 │   ├── 016_busqueda_sectores_ubicacion.sql # Búsqueda escalable, sectores fijos, ubicación normalizada
+│   ├── 017_sin_limite_red.sql             # Vinculaciones en la base, CUIT único, chats largos
 │   └── historial/                         # Migraciones ya aplicadas al proyecto actual (solo referencia,
 │                                           # no hace falta correrlas en un proyecto nuevo: 001 ya las incluye)
 ├── supabase/functions/admin-update-user/  # Edge Function (opcional): admin edita email/contraseña
@@ -211,7 +213,8 @@ correrlos más de una vez.
    (solicitudes y carga rápida de ofertas/necesidades) y
    [`sql/014_blog.sql`](sql/014_blog.sql) (blog) y
    [`sql/015_normas_seguridad.sql`](sql/015_normas_seguridad.sql) (seguridad y datos personales) y
-   [`sql/016_busqueda_sectores_ubicacion.sql`](sql/016_busqueda_sectores_ubicacion.sql) (búsqueda, sectores y ubicación).
+   [`sql/016_busqueda_sectores_ubicacion.sql`](sql/016_busqueda_sectores_ubicacion.sql) (búsqueda, sectores y ubicación) y
+   [`sql/017_sin_limite_red.sql`](sql/017_sin_limite_red.sql) (vinculaciones, CUIT y chats).
 5. Registrate normalmente desde la app (pestaña "Registrarse"). La
    **primera** cuenta de un proyecto nuevo no es admin automáticamente: hay
    que asignarle el rol manualmente (paso siguiente). A partir de ahí, ese
@@ -354,6 +357,26 @@ Qué agrega:
   completa con teclado, ventanas que se cierran con Esc, etiquetas y
   mensajes para lectores de pantalla, "Saltar al contenido", título por
   sección y respeto de "reducir movimiento".
+
+### Actualización: datos completos sin el corte de 1000 filas (sql/017)
+
+Supabase entrega como máximo 1000 filas por pedido y corta sin avisar.
+Desde esta versión:
+- Las listas que la página necesita enteras (organizaciones, ofertas y
+  necesidades, usuarios, conexiones, solicitudes) se piden **en tandas**
+  hasta traerlas todas (`assets/js/paginar.ts`).
+- Las **vinculaciones posibles** se calculan en la base
+  (`sugerencias_conexion`): cada usuario recibe solo las de sus empresas; la
+  vista "Toda la red" del admin va de a 50, con la búsqueda resuelta en la
+  base. Mismas reglas que antes (verificado comparando ambos cálculos).
+- El **CUIT** es único sin importar guiones o espacios, y el formulario lo
+  controla contra la base antes de guardar.
+- Los **chats** muestran los 100 mensajes más recientes y "Ver mensajes
+  anteriores" (antes mostraban los 500 más viejos).
+
+Para aplicarla: ejecutá [`sql/017_sin_limite_red.sql`](sql/017_sin_limite_red.sql)
+en el SQL Editor y después publicá el sitio. El sitio anterior sigue
+funcionando con la base nueva.
 
 ### Actualización: búsqueda escalable, sectores y ubicación (sql/016)
 

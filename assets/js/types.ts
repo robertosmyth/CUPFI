@@ -390,6 +390,8 @@ export interface Database {
       buscar_graduados: { Args: { p: Record<string, unknown> }; Returns: unknown };
       wm_buscar_conexiones: { Args: { p: Record<string, unknown> }; Returns: unknown };
       wm_buscar_solicitudes: { Args: { p: Record<string, unknown> }; Returns: unknown };
+      sugerencias_conexion: { Args: { p?: Record<string, unknown> }; Returns: unknown };
+      cuit_disponible: { Args: { p_cuit: string; p_excluir?: number | null }; Returns: boolean };
       sugerir_usuarios: { Args: { p_q: string; p_limite?: number }; Returns: { id: string; nombre: string; apellido: string; email: string | null }[] };
       marcar_guia_vista: {
         Args: Record<never, never>;

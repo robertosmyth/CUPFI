@@ -376,9 +376,9 @@ export async function cargarMensajesIniciales(): Promise<void> {
   const ids = [...document.querySelectorAll<HTMLElement>('.sol-msg-inicial')].map(el => Number(el.id.replace('sol-msg-', '')));
   for (const id of ids) {
     try {
-      const msgs = await Solicitudes.listMensajes(id);
+      const m = await Solicitudes.primerMensaje(id);
       const el = document.getElementById('sol-msg-' + id);
-      if (el && msgs.length) el.innerHTML = `<i class="ti ti-quote"></i> ${esc(msgs[0].contenido)}`;
+      if (el && m) el.innerHTML = `<i class="ti ti-quote"></i> ${esc(m.contenido)}`;
     } catch { /* sin mensaje no pasa nada */ }
   }
 }

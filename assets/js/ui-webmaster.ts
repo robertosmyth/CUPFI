@@ -52,6 +52,7 @@ let filtrosListos = false;
 export const ACCIONES: Record<string, string> = {
   sesion_inicio: 'Inicio de sesión',
   sesion_cierre: 'Cierre de sesión',
+  sesion_inactividad: 'Cierre por inactividad',
   registro: 'Registro de cuenta',
   perfil_edicion: 'Edición de perfil',
   rol_cambio: 'Cambio de rol',

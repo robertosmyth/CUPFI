@@ -4,6 +4,7 @@
 // y chat privado con una pestaña por conexión en match.
 // ══════════════════════════════════════════════
 import * as Conexiones from './conexiones.ts';
+import { MENSAJES_PAGINA } from './conexiones.ts';
 import * as Solicitudes from './solicitudes.ts';
 import {
   cargarMensajesIniciales, contarSolicitudesPendientesRecibidas, fraseSolicitud, miLado, nombreDestino, nombreOrigen,
@@ -11,7 +12,7 @@ import {
 } from './ui-solicitudes.ts';
 import { app, fechaHora, nombreUsuario } from './contexto.ts';
 import {
-  armarMisConexiones, calcularSugerencias, matchesEntre, recomendacionesPara, type ConexionVista,
+  armarMisConexiones, matchesEntre, sugerenciasDesdeBase, recomendacionesPara, type ConexionVista,
 } from './matching.ts';
 import { esc, friendlyError } from './utils.ts';
 import type { ConexionAccion, EstadoConexion, MensajeRow, ParCoincidencia, SolicitudMensajeRow, Sugerencia } from './types.ts';
@@ -27,6 +28,8 @@ declare global {
     enviarChat(): Promise<void>;
     cerrarChat(): void;
     cerrarMatch(): void;
+    chatAnteriores(): void;
+    vinRedMas(): void;
   }
 }
 
@@ -52,8 +55,7 @@ export function contarMisPendientes(): number {
 
 function misVistas(): ConexionVista[] {
   const c = app();
-  const sug = calcularSugerencias(c.orgs, c.categorias);
-  ultimasVistas = armarMisConexiones(sug, c.conexiones, c.orgs, c.categorias, c.misEmpresas());
+  ultimasVistas = armarMisConexiones(c.sugerencias, c.conexiones, c.orgs, c.categorias, c.misEmpresas());
   return ultimasVistas;
 }
 
@@ -152,6 +154,44 @@ function cardHtml(v: ConexionVista): string {
   </div>`;
 }
 
+// ─── Toda la red (admins): de a páginas desde la base (sql/017) ─────
+const RED_PAGINA = 50;
+let redItems: Sugerencia[] = [];
+let redTotal = 0;
+let redPedido = 0;
+let redTimer: number | undefined;
+
+async function cargarRed(q: string, agregar: boolean): Promise<void> {
+  const c = app();
+  const mio = ++redPedido;
+  const list = $('vin-list');
+  list.setAttribute('aria-busy', 'true');
+  try {
+    const r = await Conexiones.listSugerencias({
+      red: true, q, nivel: vinFiltro === 'todos' ? undefined : vinFiltro,
+      limite: RED_PAGINA, desde: agregar ? redItems.length : 0,
+    });
+    if (mio !== redPedido || vinVista !== 'red') return;
+    const nuevas = sugerenciasDesdeBase(r.items, c.orgs, c.categorias);
+    redItems = agregar ? redItems.concat(nuevas) : nuevas;
+    redTotal = r.total;
+    $('vin-count').textContent = redTotal.toLocaleString('es-AR');
+    const faltan = redTotal - redItems.length;
+    list.innerHTML = redItems.length
+      ? redItems.map(redCardHtml).join('') + (faltan > 0
+        ? `<div class="dir-mas-wrap"><button type="button" class="btn-out" id="vin-red-mas" onclick="vinRedMas()">Ver más (${Math.min(RED_PAGINA, faltan)} de ${faltan.toLocaleString('es-AR')} restantes)</button></div>` : '')
+      : `<div class="empty"><i class="ti ti-arrows-exchange"></i>${q || vinFiltro !== 'todos' ? 'Sin resultados para ese criterio.' : 'No se detectaron vinculaciones aún.'}</div>`;
+  } catch (e) {
+    if (mio === redPedido) list.innerHTML = `<div class="empty">${esc(friendlyError(e))}</div>`;
+  } finally {
+    list.removeAttribute('aria-busy');
+  }
+}
+
+window.vinRedMas = function () {
+  void cargarRed(($<HTMLInputElement>('search-vin').value || '').toLowerCase(), true);
+};
+
 function redCardHtml(s: Sugerencia): string {
   return `<div class="vin-row">
     <div class="vc">
@@ -203,8 +243,13 @@ window.renderVin = function () {
   ['vin-search-row', 'vin-filtros', 'vin-list'].forEach(id => $(id).classList.toggle('hidden', buscar));
   if (buscar) { renderBuscar(); return; }
 
+  if (vinVista === 'red' && c.sugerenciasEnBase) {
+    window.clearTimeout(redTimer);
+    redTimer = window.setTimeout(() => void cargarRed(q, false), 250);
+    return;
+  }
   if (vinVista === 'red') {
-    const todas = calcularSugerencias(c.orgs, c.categorias);
+    const todas = c.sugerencias;
     const sug = todas.filter(s =>
       (vinFiltro === 'todos' || s.nivel === vinFiltro) &&
       coincideBusqueda(q, s.necesita.nombre, s.ofrece.nombre, s.categoria.nombre, s.pares, [s.necesita.referente, s.ofrece.referente]));
@@ -316,6 +361,8 @@ window.cerrarMatch = function () {
 interface ChatEstado {
   mia: number; otra: number; activa: number | null; ultimoId: number;
   solicitud: number | null; lado: 'origen' | 'destino' | null;
+  limite: number; // cuántos de los mensajes más recientes se muestran
+  cargandoAnteriores?: boolean;
 }
 const PRIVACIDAD_CONEXION = 'Chat privado: solo lo leen los usuarios de estas dos empresas. La plataforma registra que hubo contacto, no el contenido.';
 const PRIVACIDAD_SOLICITUD = 'Chat privado: solo lo leen las dos partes de esta solicitud. La plataforma registra que hubo contacto, no el contenido.';
@@ -329,7 +376,7 @@ function pestanasChat(): ConexionVista[] {
 }
 
 window.abrirChat = function (miEmpresaId, otraEmpresaId, conexionId) {
-  chat = { mia: miEmpresaId, otra: otraEmpresaId, activa: conexionId ?? null, ultimoId: 0, solicitud: null, lado: null };
+  chat = { mia: miEmpresaId, otra: otraEmpresaId, activa: conexionId ?? null, ultimoId: 0, solicitud: null, lado: null, limite: MENSAJES_PAGINA };
   const tabs = pestanasChat();
   if (!tabs.length) { chat = null; alert('Todavía no hay conexiones en match con esta empresa.'); return; }
   if (!chat.activa || !tabs.some(t => t.row!.id === chat!.activa)) chat.activa = tabs[0].row!.id;
@@ -352,7 +399,7 @@ window.abrirChatSolicitud = function (id) {
   const lado = s ? miLado(s) : null;
   if (!s || !lado) return;
   if (s.estado !== 'aceptada') { alert('El chat se habilita cuando la empresa acepta la solicitud.'); return; }
-  chat = { mia: 0, otra: 0, activa: id, ultimoId: 0, solicitud: id, lado };
+  chat = { mia: 0, otra: 0, activa: id, ultimoId: 0, solicitud: id, lado, limite: MENSAJES_PAGINA };
   $('chat-title').textContent = `Chat con ${lado === 'origen' ? nombreDestino(s) : nombreOrigen(s)}`;
   $('chat-sub').textContent = `Escribís como ${lado === 'origen' ? nombreOrigen(s) : nombreDestino(s)}`;
   $('chat-privacidad-txt').textContent = PRIVACIDAD_SOLICITUD;
@@ -398,6 +445,7 @@ window.chatTab = function (conexionId) {
   if (!chat) return;
   chat.activa = conexionId;
   chat.ultimoId = 0;
+  chat.limite = MENSAJES_PAGINA;
   renderChatTabs();
   void cargarMensajes(true);
 };
@@ -407,21 +455,25 @@ async function cargarMensajes(forzar: boolean): Promise<void> {
   const conexionId = chat.activa;
   const solicitud = chat.solicitud;
   try {
-    const msgs = solicitud ? await Solicitudes.listMensajes(solicitud) : await Conexiones.listMensajes(conexionId);
+    const { msgs, hayMas } = solicitud
+      ? await Solicitudes.listMensajes(solicitud, chat.limite)
+      : await Conexiones.listMensajes(conexionId, chat.limite);
     if (!chat || chat.activa !== conexionId || chat.solicitud !== solicitud) return; // cambió de pestaña mientras cargaba
     const ultimo = msgs.length ? msgs[msgs.length - 1].id : 0;
     if (!forzar && ultimo === chat.ultimoId) return;
     chat.ultimoId = ultimo;
-    renderMensajes(msgs);
+    renderMensajes(msgs, hayMas);
   } catch (e) {
     if (forzar) $('chat-mensajes').innerHTML = `<div class="empty">${esc(friendlyError(e))}</div>`;
   }
 }
 
-function renderMensajes(msgs: Array<MensajeRow | SolicitudMensajeRow>): void {
+function renderMensajes(msgs: Array<MensajeRow | SolicitudMensajeRow>, hayMas = false): void {
   if (!chat) return;
   const box = $('chat-mensajes');
   const abajo = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+  const altoAntes = box.scrollHeight;
+  const topAntes = box.scrollTop;
   const orgs = app().orgs;
   const sol = chat.solicitud ? app().solicitudes.find(x => x.id === chat!.solicitud) : undefined;
   box.innerHTML = msgs.length
@@ -442,8 +494,20 @@ function renderMensajes(msgs: Array<MensajeRow | SolicitudMensajeRow>): void {
         </div>`;
       }).join('')
     : '<div class="chat-vacio">Todavía no hay mensajes en esta conexión. ¡Escribí el primero!</div>';
-  if (abajo || msgs.length <= 1) box.scrollTop = box.scrollHeight;
+  if (hayMas) box.insertAdjacentHTML('afterbegin', '<button type="button" class="btn-out chat-anteriores" onclick="chatAnteriores()"><i class="ti ti-arrow-up" aria-hidden="true"></i> Ver mensajes anteriores</button>');
+  if (chat.cargandoAnteriores) {
+    // mantener a la vista lo que se estaba leyendo
+    box.scrollTop = topAntes + (box.scrollHeight - altoAntes);
+    chat.cargandoAnteriores = false;
+  } else if (abajo || msgs.length <= 1) box.scrollTop = box.scrollHeight;
 }
+
+window.chatAnteriores = function () {
+  if (!chat) return;
+  chat.limite += MENSAJES_PAGINA;
+  chat.cargandoAnteriores = true;
+  void cargarMensajes(true);
+};
 
 window.enviarChat = async function () {
   if (!chat || !chat.activa) return;
