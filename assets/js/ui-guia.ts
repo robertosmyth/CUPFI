@@ -36,7 +36,7 @@ function pasosRecorrido(): Paso[] {
       opciones: [{ id: 'paso:1', texto: 'Empezar' }, { id: 'omitir', texto: 'Ahora no' }],
     },
     {
-      texto: 'En <strong>Empresas</strong> está el directorio de todas las organizaciones, con lo que ofrecen (en verde) y lo que necesitan (en naranja).',
+      texto: 'En <strong>Empresas</strong> está el directorio de todas las organizaciones, con lo que ofrecen (en verde) y lo que necesitan (en naranja). Con los <strong>filtros</strong> podés combinar sector, ubicación, qué ofrecen y qué necesitan.',
       pantalla: 'directorio',
       opciones: [{ id: 'paso:2', texto: 'Siguiente' }],
     },
@@ -69,7 +69,15 @@ function pasosRecorrido(): Paso[] {
 const FAQ: Array<{ id: string; pregunta: string; respuesta: string; pantalla?: string }> = [
   {
     id: 'cargar', pregunta: '¿Cómo cargo mi empresa?', pantalla: 'registrar',
-    respuesta: 'Andá a <strong>Agregar</strong>, completá los datos (el CUIT es obligatorio y único) y cargá tus <strong>Servicios / Productos</strong> y <strong>Necesidades sin cubrir</strong> eligiendo categoría y subcategoría. Después la encontrás en <strong>Mis empresas</strong>, desde donde podés editarla.',
+    respuesta: 'Andá a <strong>Agregar</strong>, completá los datos (el CUIT es obligatorio y único), elegí el <strong>sector</strong> y la <strong>localidad</strong> de la lista, y cargá tus <strong>Servicios / Productos</strong> y <strong>Necesidades sin cubrir</strong> eligiendo categoría y subcategoría. Después la encontrás en <strong>Mis empresas</strong>, desde donde podés editarla.',
+  },
+  {
+    id: 'filtros', pregunta: '¿Cómo busco y filtro empresas?', pantalla: 'directorio',
+    respuesta: 'En <strong>Empresas</strong> escribí lo que buscás (nombre, servicio, ciudad…): no importan los acentos y, si te equivocás al escribir, te muestra resultados parecidos. Con <strong>Filtros</strong> combinás sector, provincia/partido/localidad, "cerca de" una localidad, qué ofrecen y qué necesitan. Cada filtro activo aparece arriba como una etiqueta que se quita con la ✕. El <strong>Mapa</strong> muestra las mismas empresas filtradas.',
+  },
+  {
+    id: 'ubicacion', pregunta: '¿Cómo ubico mi empresa en el mapa?', pantalla: 'registrar',
+    respuesta: 'Al editar la empresa, escribí la <strong>localidad</strong> y elegila de la lista (sale del registro oficial). Si además completás la <strong>calle y número</strong>, el punto queda exacto. Si no está bien, arrastrá el marcador del mapa chico o tocá el lugar correcto.',
   },
   {
     id: 'categorias', pregunta: '¿Qué son la categoría y la subcategoría?',

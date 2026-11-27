@@ -11,7 +11,7 @@ function emp(nombre: string, items: EmpresaItem[], usuarios: string[] = ['u' + n
   return {
     id: nextId++, uid: usuarios[0] || null, cuit: '', tipo: 'Empresa', nombre, sector: '', calle: '', ciudad: '',
     provincia: '', pais: '', referente: '', cargo: '', emailOrg: '', tel: '', web: '', desc: '',
-    logo: null, instalaciones: [], needsCovered: [], items, usuarios,
+    logo: null, instalaciones: [], needsCovered: [], sectorId: null, sector2Id: null, provinciaId: null, departamento: '', departamentoId: null, localidadId: null, lat: null, lng: null, ubicacionPrecision: null, items, usuarios,
   };
 }
 

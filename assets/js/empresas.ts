@@ -31,6 +31,15 @@ function fromDb(row: EmpresaRow): Empresa {
     logo: row.logo,
     instalaciones: row.instalaciones || [],
     needsCovered: row.needs_covered || [],
+    sectorId: row.sector_id ?? null,
+    sector2Id: row.sector2_id ?? null,
+    provinciaId: row.provincia_id ?? null,
+    departamento: row.departamento ?? '',
+    departamentoId: row.departamento_id ?? null,
+    localidadId: row.localidad_id ?? null,
+    lat: row.lat ?? null,
+    lng: row.lng ?? null,
+    ubicacionPrecision: row.ubicacion_precision ?? null,
     items: [], // se completan en main.ts con listItems()
   };
 }
@@ -54,6 +63,15 @@ function toDb(o: EmpresaInput): Partial<EmpresaRow> {
   if ('logo' in o) out.logo = o.logo;
   if ('instalaciones' in o) out.instalaciones = o.instalaciones;
   if ('needsCovered' in o) out.needs_covered = o.needsCovered;
+  if ('sectorId' in o) out.sector_id = o.sectorId ?? null;
+  if ('sector2Id' in o) out.sector2_id = o.sector2Id ?? null;
+  if ('provinciaId' in o) out.provincia_id = o.provinciaId ?? null;
+  if ('departamento' in o) out.departamento = o.departamento || null;
+  if ('departamentoId' in o) out.departamento_id = o.departamentoId ?? null;
+  if ('localidadId' in o) out.localidad_id = o.localidadId ?? null;
+  if ('lat' in o) out.lat = o.lat ?? null;
+  if ('lng' in o) out.lng = o.lng ?? null;
+  if ('ubicacionPrecision' in o) out.ubicacion_precision = o.ubicacionPrecision ?? null;
   return out;
 }
 

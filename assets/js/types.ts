@@ -59,7 +59,23 @@ export type EmpresaRow = {
   items_migrados: boolean;
   created_at: string;
   updated_at: string;
+  // sql/016: sector de la lista, ubicación normalizada (Georef) y coordenadas.
+  sector_id: number | null;
+  sector2_id: number | null;
+  sector_original: string | null;
+  provincia_id: string | null;
+  departamento: string | null;
+  departamento_id: string | null;
+  localidad_id: string | null;
+  lat: number | null;
+  lng: number | null;
+  ubicacion_precision: UbicacionPrecision | null;
 };
+
+export type UbicacionPrecision = 'direccion' | 'localidad' | 'manual';
+
+export type SectorRow = { id: number; nombre: string; orden: number; created_at: string };
+export type ProvinciaRow = { id: string; nombre: string; orden: number };
 
 // ─── Etapa 1 (ver sql/012_etapa1_conexiones.sql) ───────────────────
 export type CategoriaRow = {
@@ -321,6 +337,8 @@ export interface Database {
       blog_comentario_likes: { Row: BlogComentarioLikeRow; Insert: never; Update: never; Relationships: [] };
       blog_denuncias: { Row: BlogDenunciaRow; Insert: never; Update: never; Relationships: [] };
       claves_temporales: { Row: { user_id: string; created_at: string }; Insert: never; Update: never; Relationships: [] };
+      sectores: { Row: SectorRow; Insert: Pick<SectorRow, 'nombre'> & Partial<Pick<SectorRow, 'orden'>>; Update: Partial<Pick<SectorRow, 'nombre' | 'orden'>>; Relationships: [] };
+      provincias: { Row: ProvinciaRow; Insert: never; Update: never; Relationships: [] };
     };
     // OJO: acá tiene que ir un tipo SIN index signature (no
     // Record<string, never>). Un Record<string, never> sí tiene index
@@ -367,6 +385,12 @@ export interface Database {
         Args: Record<never, never>;
         Returns: undefined;
       };
+      buscar_empresas: { Args: { p: Record<string, unknown> }; Returns: unknown };
+      buscar_usuarios: { Args: { p: Record<string, unknown> }; Returns: unknown };
+      buscar_graduados: { Args: { p: Record<string, unknown> }; Returns: unknown };
+      wm_buscar_conexiones: { Args: { p: Record<string, unknown> }; Returns: unknown };
+      wm_buscar_solicitudes: { Args: { p: Record<string, unknown> }; Returns: unknown };
+      sugerir_usuarios: { Args: { p_q: string; p_limite?: number }; Returns: { id: string; nombre: string; apellido: string; email: string | null }[] };
       marcar_guia_vista: {
         Args: Record<never, never>;
         Returns: undefined;
@@ -482,6 +506,15 @@ export interface EmpresaFields {
   logo: string | null;
   instalaciones: string[];
   needsCovered: string[];
+  sectorId: number | null;
+  sector2Id: number | null;
+  provinciaId: string | null;
+  departamento: string;
+  departamentoId: string | null;
+  localidadId: string | null;
+  lat: number | null;
+  lng: number | null;
+  ubicacionPrecision: UbicacionPrecision | null;
 }
 
 // Payload parcial que se manda a createEmpresa/updateEmpresa (solo los
